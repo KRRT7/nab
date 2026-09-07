@@ -545,36 +545,33 @@ class PartialSolution(Generic[PackageType, VersionType]):
         # Trail levels never decrease, so this pops exactly the assignments above
         # target_level; every other package keeps the positive and negative ranges
         # its cached effective range was derived from.
+        changed_packages: dict[PackageType, None] = {}
         while self._assignments and self._assignments[-1].decision_level > target_level:
             package = self._assignments.pop().package
+            changed_packages[package] = None
             self._effective_range_cache.pop(package, None)
             self._changed.add(package)
 
         self._decision_level = target_level
 
-        empty_packages: list[PackageType] = []
-        for package, entries in self._assignments_by_package.items():
-            popped = decision_popped = False
+        # Deduplicate in trail-pop order; untouched packages need no restoration.
+        for package in changed_packages:
+            entries = self._assignments_by_package[package]
+            decision_popped = False
             while entries and entries[-1].decision_level > target_level:
-                popped = True
                 if entries.pop().is_decision:
                     decision_popped = True
 
             if not entries:
-                empty_packages.append(package)
+                del self._assignments_by_package[package]
                 self._positive_ranges.pop(package, None)
                 self._negative_ranges.pop(package, None)
                 self._decided_versions.pop(package, None)
                 self._undecided.discard(package)
-            # A package that kept every entry already holds what the rebuild
-            # would restore.
-            elif popped:
+            else:
                 self._update_package_state_after_backtrack(
                     package, entries, decision_popped=decision_popped
                 )
-
-        for package in empty_packages:
-            del self._assignments_by_package[package]
 
     def _update_package_state_after_backtrack(
         self,
