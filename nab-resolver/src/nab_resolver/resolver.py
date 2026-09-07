@@ -26,7 +26,6 @@ from typing import TYPE_CHECKING, Any, Final, Generic, Protocol
 
 from . import conflict, decide, incompat_index, propagate
 from ._compat import override
-from ._conflict_counts import ConflictCounts
 from .decision_queue import DecisionQueue
 from .errors import ResolutionError
 from .partial_solution import PartialSolution
@@ -659,9 +658,7 @@ class Resolver(Generic[PackageType, VersionType]):
         self.solution: PartialSolution[Any, Any] = PartialSolution(
             range_type=range_type
         )
-        self.stats: ResolverStats[PackageType] = ResolverStats(
-            package_conflict_counts=ConflictCounts(int)
-        )
+        self.stats: ResolverStats[PackageType] = ResolverStats()
 
         self.constraints: Mapping[PackageType, RangeProtocol[VersionType]] = {}
         self.root_package_order: dict[PackageType, tuple[int, int, str]] = {}
@@ -907,7 +904,7 @@ class Resolver(Generic[PackageType, VersionType]):
         self.clause_contradicted_at.clear()
         self.dependency_index.clear()
         self.solution = PartialSolution(range_type=self.range_type)
-        self.stats = ResolverStats(package_conflict_counts=ConflictCounts(int))
+        self.stats = ResolverStats()
 
         self.constraints = constraints or {}
         self.root_package_order.clear()
