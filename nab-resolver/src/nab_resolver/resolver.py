@@ -835,7 +835,7 @@ class Resolver(Generic[PackageType, VersionType]):
             decide.record_no_versions(self, next_package, had_pending=had_pending)
             return next_package
 
-        self.solution.decide(next_package, chosen_version)
+        exact_range = self.solution.decide(next_package, chosen_version)
         self.stats.decisions += 1
         self.observer.on_decision(
             next_package, chosen_version, self.solution.decision_level
@@ -844,7 +844,6 @@ class Resolver(Generic[PackageType, VersionType]):
         dependencies = self.provider.get_dependencies(next_package, chosen_version)
         if not dependencies:
             return next_package
-        exact_range = self.range_type.singleton(chosen_version)
         widened = self.provider.widen_decision(next_package, chosen_version)
         parent_range = exact_range if widened is None else self.as_term_range(widened)
         for dependency_package, supplied_range in dependencies.items():
