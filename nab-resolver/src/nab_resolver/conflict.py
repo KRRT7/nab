@@ -11,6 +11,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Any
 
+from ._conflict_counts import ConflictCounts
 from .errors import ResolutionError
 from .incompat_index import add_incompatibility
 from .partial_solution import PartialSolution
@@ -473,7 +474,12 @@ def maybe_restart(
     if restarts_remaining <= 0:
         return restart_threshold, restarts_remaining, False
 
-    max_count = max(resolver.stats.package_conflict_counts.values(), default=0)
+    counts = resolver.stats.package_conflict_counts
+    max_count = (
+        counts.maximum
+        if isinstance(counts, ConflictCounts)
+        else max(counts.values(), default=0)
+    )
     if max_count < restart_threshold:
         return restart_threshold, restarts_remaining, False
 
