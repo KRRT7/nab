@@ -9,19 +9,22 @@ import pytest
 from nab_resolver.ranges import Range
 from nab_resolver.resolver import Resolver
 
-from .test_range_contract import FlaggedRange
-from .test_resolver import DictProvider
 
-
-@pytest.mark.parametrize("range_type", [Range, FlaggedRange])
+@pytest.mark.parametrize("range_name", ["Range", "FlaggedRange"])
 @pytest.mark.parametrize("dependency", [None, "bar", "foo"])
 @pytest.mark.parametrize("widen", [False, True])
 def test_decision_constructs_one_singleton(
     monkeypatch: pytest.MonkeyPatch,
-    range_type: Any,
+    range_name: str,
     dependency: str | None,
     widen: bool,
 ) -> None:
+    # Workspace suites share the tests namespace; wait until collection has
+    # registered the sibling helper modules before importing them.
+    from .test_range_contract import FlaggedRange
+    from .test_resolver import DictProvider
+
+    range_type: Any = Range if range_name == "Range" else FlaggedRange
     dependencies = {} if dependency is None else {dependency: range_type.full()}
     provider = DictProvider({"foo": {2: dependencies}, "bar": {1: {}}})
     widened = range_type.full() if widen else None
@@ -45,6 +48,8 @@ def test_decision_constructs_one_singleton(
 def test_rejected_self_dependency_keeps_the_exact_parent(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    from .test_resolver import DictProvider
+
     provider = DictProvider({"foo": {2: {"foo": Range.less_than(2)}, 1: {}}})
     # Only version 2 has dependencies. Widening must not make its self-conflict
     # rule out version 1, which is still a valid solution.
