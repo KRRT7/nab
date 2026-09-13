@@ -79,3 +79,26 @@ def test_cache_evicts_and_recomputes_without_changing_the_answer() -> None:
     after = tags._python_axis_accepts_tags.cache_info()
     assert after.currsize == 8192
     assert after.misses == before.misses + 1
+
+
+@pytest.mark.parametrize(
+    ("interpreters", "abis", "expected"),
+    [
+        ("cp38.cp39.cp310", "cp38.cp39.cp310", False),
+        ("cp38.cp39.cp310", "cp38.cp39.abi3", True),
+        ("py2.py3", "unknown.none", True),
+        ("cp311", "unknown", False),
+    ],
+)
+def test_compressed_pairs_preserve_acceptance(
+    interpreters: str, abis: str, *, expected: bool
+) -> None:
+    filename = f"pkg-1-{interpreters}-{abis}-linux_x86_64.win_amd64.whl"
+    assert tags.python_axis_accepts("3.11", "cpython", filename) is expected
+    assert tags.python_axis_accepts("3.11", "cpython", filename) is expected
+
+
+def test_each_compressed_pair_can_supply_the_match() -> None:
+    filename = "pkg-1-cp38.cp39.cp310.cp311-cp38.cp39.cp310.cp311-any.whl"
+    for version in ("3.8", "3.9", "3.10", "3.11"):
+        assert tags.python_axis_accepts(version, "cpython", filename)
