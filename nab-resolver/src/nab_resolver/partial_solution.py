@@ -450,8 +450,10 @@ class PartialSolution(Generic[PackageType, VersionType]):
         if effective.is_empty:
             self._contradiction_epoch += 1
 
-    def decide(self, package: PackageType, version: VersionType) -> None:
-        """Record a decision: pick a specific version for a package."""
+    def decide(
+        self, package: PackageType, version: VersionType
+    ) -> RangeProtocol[VersionType]:
+        """Record a decision and return the exact range stored for it."""
         self._decision_level += 1
         exact_range = self._range_type.singleton(version)
 
@@ -475,6 +477,7 @@ class PartialSolution(Generic[PackageType, VersionType]):
         )
         self._assignments.append(assignment)
         self._assignments_by_package[package].append(assignment)
+        return exact_range
 
     def derive(
         self,

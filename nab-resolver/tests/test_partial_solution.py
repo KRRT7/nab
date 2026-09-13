@@ -64,6 +64,21 @@ class TestAssignments:
         assert r is not None
         assert 5 in r
 
+    def test_decide_returns_its_singleton_across_backtracking(self) -> None:
+        ps = PartialSolution()
+        first = ps.decide("foo", 0)
+        assert first is ps.positive_range("foo")
+        assert first is ps.assignments_for("foo")[-1].accumulated_range
+
+        ps.backtrack(0)
+        second = ps.decide("foo", 1)
+        assert second is ps.positive_range("foo")
+        assert second is ps.assignments_for("foo")[-1].accumulated_range
+        assert 0 in first
+        assert 1 not in first
+        assert 1 in second
+        assert 0 not in second
+
     def test_derive(self) -> None:
         ps = PartialSolution()
         inc = Incompatibility(
