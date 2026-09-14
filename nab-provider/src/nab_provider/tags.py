@@ -1050,5 +1050,18 @@ def python_axis_accepts(
     tags = wheel_tag_set(wheel_filename)
     if not tags:
         return True
+    return _python_axis_accepts_tags(python_version, implementation, tags)
+
+
+@lru_cache(maxsize=8192)
+def _python_axis_accepts_tags(
+    python_version: str, implementation: str, tags: frozenset[Tag]
+) -> bool:
+    """Reuse compatibility across filenames sharing an immutable tag set.
+
+    A project's releases often repeat the same wheel tags. Keying on those
+    tags and the Python axis shares the answer across releases and packages
+    without retaining every filename. Bound the cache like ``_parse_tag_str``.
+    """
     accepted = _python_axis_tags(python_version, implementation)
     return any((tag.interpreter, tag.abi) in accepted for tag in tags)
