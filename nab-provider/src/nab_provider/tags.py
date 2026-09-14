@@ -1057,11 +1057,9 @@ def python_axis_accepts(
 def _python_axis_accepts_tags(
     python_version: str, implementation: str, tags: frozenset[Tag]
 ) -> bool:
-    """Reuse compatibility across filenames sharing an immutable tag set.
-
-    A project's releases often repeat the same wheel tags. Keying on those
-    tags and the Python axis shares the answer across releases and packages
-    without retaining every filename. Bound the cache like ``_parse_tag_str``.
-    """
+    """Return whether the Python axis accepts any wheel tag."""
     accepted = _python_axis_tags(python_version, implementation)
-    return any((tag.interpreter, tag.abi) in accepted for tag in tags)
+    for tag in tags:
+        if (tag.interpreter, tag.abi) in accepted:
+            return True
+    return False
