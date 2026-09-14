@@ -551,33 +551,36 @@ class PartialSolution(Generic[PackageType, VersionType]):
         _detach_snapshots(self._range_snapshots)
         _detach_snapshots(self._decision_snapshots)
 
-        # Trail levels never decrease, so this pops exactly the assignments above
-        # target_level; every other package keeps the positive and negative ranges
-        # its cached effective range was derived from.
-        changed_packages: dict[PackageType, None] = {}
-        while self._assignments and self._assignments[-1].decision_level > target_level:
-            package = self._assignments.pop().package
-            changed_packages[package] = None
-            self._effective_range_cache.pop(package, None)
-            self._changed.add(package)
-
         self._decision_level = target_level
+        if (
+            not self._assignments
+            or self._assignments[-1].decision_level <= target_level
+        ):
+            return
 
-        # Deduplicate in trail-pop order; untouched packages need no restoration.
+        # Trail levels never decrease, so removed assignments form a suffix.
+        changed_packages: dict[PackageType, None] = {}
+        assignments = self._assignments
+        while assignments and assignments[-1].decision_level > target_level:
+            changed_packages[assignments.pop().package] = None
+
+        # Untouched packages keep their cached state.
+        self._changed.update(changed_packages)
         for package in changed_packages:
+            self._effective_range_cache.pop(package, None)
             entries = self._assignments_by_package[package]
-            decision_popped = False
-            while entries and entries[-1].decision_level > target_level:
-                if entries.pop().is_decision:
-                    decision_popped = True
-
-            if not entries:
+            if entries[0].decision_level > target_level:
+                entries.clear()
                 del self._assignments_by_package[package]
                 self._positive_ranges.pop(package, None)
                 self._negative_ranges.pop(package, None)
                 self._decided_versions.pop(package, None)
                 self._undecided.discard(package)
             else:
+                decision_popped = False
+                while entries[-1].decision_level > target_level:
+                    if entries.pop().is_decision:
+                        decision_popped = True
                 self._update_package_state_after_backtrack(
                     package, entries, decision_popped=decision_popped
                 )
