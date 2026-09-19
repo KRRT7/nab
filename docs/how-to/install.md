@@ -39,6 +39,8 @@ pip install 'nab[httpx2]'
 nab lock --http-backend httpx2
 ```
 
+The selected backend also fetches build dependencies, including dependencies of nested builds.
+
 For httpx, install `nab[httpx]` and select `--http-backend httpx`. Each extra includes the `h2` package for HTTP/2 support. Missing dependencies produce an installation hint when selecting the backend.
 
 All backends use system certificates through truststore and send `User-Agent: nab-index/<version>`.

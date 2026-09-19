@@ -701,7 +701,7 @@ class TestArchiveMaterialize:
         )
         provider.fetch_versions("foo")
 
-        assert captured == {"config": None, "offline": True}
+        assert captured == {"config": None, "offline": True, "transport_factory": None}
 
     @pytest.mark.parametrize(
         ("failure_target", "expected"),

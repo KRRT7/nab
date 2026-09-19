@@ -13,6 +13,7 @@ from __future__ import annotations
 import gc
 import sys
 from contextlib import contextmanager
+from functools import partial
 from typing import TYPE_CHECKING
 
 import tomli
@@ -285,6 +286,7 @@ def _resolve(  # noqa: PLR0913, PLR0912, C901 - one wrapper per resolve_for_targ
     offline: bool,
     transport: AsyncHttpTransport,
     failure_prefix: str,
+    http_backend: str = "urllib3",
     groups: tuple[str, ...] = (),
     extras: tuple[str, ...] = (),
     build_requirements: bool = False,
@@ -311,6 +313,7 @@ def _resolve(  # noqa: PLR0913, PLR0912, C901 - one wrapper per resolve_for_targ
                     transport,
                     targets=targets,
                     inputs=config.resolve_inputs(),
+                    build_transport_factory=partial(_make_transport, http_backend),
                     cache_dir=cache_dir,
                     offline=offline,
                     groups=groups,

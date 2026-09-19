@@ -6162,6 +6162,55 @@ class TestLayeredRunKnobSurface:
             )
         assert mock_transport.call_args.args[0] == "httpx"
 
+    @pytest.mark.parametrize("command", ["lock", "download"])
+    @pytest.mark.parametrize(
+        ("backend", "transport_type"),
+        [
+            ("urllib3", Urllib3AsyncTransport),
+            ("httpx", HttpxAsyncTransport),
+            ("httpx2", Httpx2AsyncTransport),
+        ],
+    )
+    def test_build_dependencies_receive_the_selected_backend(
+        self, tmp_path: Path, command: str, backend: str, transport_type: type
+    ) -> None:
+        pyproject = _make_pyproject(tmp_path)
+        with (
+            patch(
+                "nab._resolve.resolve_for_targets",
+                return_value=_stub_resolve_result(pins={}),
+            ) as resolve,
+            patch("nab._lock.write_lock"),
+            patch(
+                "nab._download.download_lock",
+                return_value=DownloadResult(written=(), skipped=()),
+            ),
+        ):
+            assert (
+                run(
+                    (
+                        command,
+                        str(pyproject),
+                        "--http-backend",
+                        backend,
+                        "--output",
+                        str(tmp_path / "pylock.toml"),
+                    )
+                )
+                == 0
+            )
+
+        factory = resolve.call_args.kwargs["build_transport_factory"]
+        assert factory is not None
+        first, second = factory(), factory()
+        try:
+            assert isinstance(first, transport_type)
+            assert isinstance(second, transport_type)
+            assert first is not second
+        finally:
+            asyncio.run(first.aclose())
+            asyncio.run(second.aclose())
+
 
 class TestPackageVersion:
     """Tests for nab._version.__version__ and the python -m nab entry point."""

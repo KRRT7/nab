@@ -4879,6 +4879,7 @@ class TestLocalSources:
             "path": tmp_path,
             "config": coordinator.build_config,
             "offline": False,
+            "transport_factory": None,
         }
 
     def test_local_source_build_refused_under_an_offline_coordinator(
@@ -10969,6 +10970,7 @@ class TestEffectiveBuildPolicy:
         assert captured["kwargs"] == {
             "config": coordinator.build_config,
             "offline": offline,
+            "transport_factory": None,
         }
 
     def test_resolve_dynamic_sdist_reuses_cross_tuple_cache(self) -> None:

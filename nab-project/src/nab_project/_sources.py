@@ -34,8 +34,9 @@ from nab_provider.vcs_request import VcsCloneError, VcsRequest
 from .paths import PathState, path_state
 
 if TYPE_CHECKING:
-    from collections.abc import Iterator
+    from collections.abc import Callable, Iterator
 
+    from nab_index.transport import AsyncHttpTransport
     from nab_provider.fetch_port import FetchPort
     from nab_provider.metadata import WheelMetadata
     from nab_provider.policy import ArchiveSource, SourceRequest
@@ -116,6 +117,8 @@ def materialize_source(
     port: FetchPort,
     request: SourceRequest,
     build_config: ResolveInputs | None,
+    *,
+    transport_factory: Callable[[], AsyncHttpTransport] | None = None,
 ) -> SourceMaterialization:
     """Materialise ``request``'s declared source and read its metadata.
 
@@ -125,10 +128,24 @@ def materialize_source(
     """
     source = request.source
     if isinstance(source, LocalSource):
-        return _materialize_local(request, source, build_config, port=port)
+        return _materialize_local(
+            request,
+            source,
+            build_config,
+            port=port,
+            transport_factory=transport_factory,
+        )
     if isinstance(source, VcsSource):
-        return _materialize_vcs(request, source, build_config, port=port)
-    return _materialize_archive(request, source, build_config, port=port)
+        return _materialize_vcs(
+            request,
+            source,
+            build_config,
+            port=port,
+            transport_factory=transport_factory,
+        )
+    return _materialize_archive(
+        request, source, build_config, port=port, transport_factory=transport_factory
+    )
 
 
 def _materialize_local(
@@ -137,6 +154,7 @@ def _materialize_local(
     build_config: ResolveInputs | None,
     *,
     port: FetchPort,
+    transport_factory: Callable[[], AsyncHttpTransport] | None = None,
 ) -> SourceMaterialization:
     """Read metadata from the directory ``source`` names."""
     path = Path(source.path)
@@ -149,6 +167,7 @@ def _materialize_local(
         kind="local",
         offline=port.offline,
         build_config=build_config,
+        transport_factory=transport_factory,
     )
     return SourceMaterialization(path=path, metadata=metadata, commit_sha=None)
 
@@ -159,6 +178,7 @@ def _materialize_vcs(
     build_config: ResolveInputs | None,
     *,
     port: FetchPort,
+    transport_factory: Callable[[], AsyncHttpTransport] | None = None,
 ) -> SourceMaterialization:
     """Clone ``source`` and read the checkout the same way as a directory."""
     if request.vcs_cache_dir is None:
@@ -189,6 +209,7 @@ def _materialize_vcs(
         kind="vcs",
         offline=port.offline,
         build_config=build_config,
+        transport_factory=transport_factory,
         persistent_root=root,
     )
     return SourceMaterialization(
@@ -218,6 +239,7 @@ def extract_source_metadata(
     offline: bool,
     build_config: ResolveInputs | None,
     persistent_root: Path | None = None,
+    transport_factory: Callable[[], AsyncHttpTransport] | None = None,
 ) -> WheelMetadata:
     """Read directory metadata under the backend ``policy``.
 
@@ -272,6 +294,7 @@ def extract_source_metadata(
             return build_backend.extract_metadata(
                 build_path,
                 config=build_config,
+                transport_factory=transport_factory,
                 offline=offline,
             )
     except (BuildBackendError, _SourceCopyError) as exc:
@@ -392,6 +415,7 @@ def _materialize_archive(
     build_config: ResolveInputs | None,
     *,
     port: FetchPort,
+    transport_factory: Callable[[], AsyncHttpTransport] | None = None,
 ) -> SourceMaterialization:  # pragma: no cover (tar data filter)
     """Materialise ``source`` from its extracted tree, downloading if needed.
 
@@ -410,6 +434,7 @@ def _materialize_archive(
         kind="archive",
         offline=port.offline,
         build_config=build_config,
+        transport_factory=transport_factory,
         persistent_root=root,
     )
     return SourceMaterialization(path=path, metadata=metadata, commit_sha=None)
