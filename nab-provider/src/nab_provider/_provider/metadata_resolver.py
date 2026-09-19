@@ -401,8 +401,9 @@ class VersionDists:
 
     Over the provider's own cached listing both views are lazy: a version is
     indexed the first time it is asked for, so a resolve that reads a few of
-    a package's versions never picks a dist for the rest.  Iterating either
-    view indexes every version.
+    a package's versions never picks a dist for the rest.
+    Iterating ``picked`` lists keys without picking distributions.
+    Iterating ``sibling_wheels`` indexes every version.
     """
 
     __slots__ = ("picked", "sibling_wheels")
@@ -424,7 +425,7 @@ class VersionDists:
     ) -> VersionDists:
         """Index ``versions`` on demand; see :class:`_LazyVersionIndex`."""
         index = _LazyVersionIndex(versions, tags, target)
-        return cls(_PickedView(index), _SiblingWheelsView(index))
+        return cls(index, _SiblingWheelsView(index))
 
 
 def _pick_noting_siblings(
@@ -435,16 +436,15 @@ def _pick_noting_siblings(
     sibling_wheels: dict[Version, list[WheelFile]],
 ) -> DistFile:
     """Pick one version's dist, recording its wheels when more than one ties."""
-    # Selected before the pick, which reuses them rather than selecting again.
-    wheels: list[WheelFile] | None = None
     if len(dists) > 1:
         wheels = [d for d in dists if isinstance(d, WheelFile)]
         if len(wheels) > 1:
             sibling_wheels[version] = wheels
-    return pick_dist(dists, tags, target, wheels)
+        return pick_dist(dists, tags, target, wheels)
+    return dists[0]
 
 
-class _LazyVersionIndex:
+class _LazyVersionIndex(Mapping[Version, "DistFile"]):
     """Picks each version's dist the first time it is asked for.
 
     ``versions`` is newest-first with each version's dists adjacent, the
@@ -494,6 +494,8 @@ class _LazyVersionIndex:
         self._picked[version] = picked
         return picked
 
+    __getitem__ = pick
+
     def siblings(self, version: Version) -> list[WheelFile] | None:
         """Return the tie candidates of ``version``, or ``None`` when it has none."""
         if version not in self._picked:
@@ -503,36 +505,31 @@ class _LazyVersionIndex:
                 return None
         return self._siblings.get(version)
 
-
-class _PickedView(Mapping[Version, "DistFile"]):
-    """The picked dist per version, indexed on first read."""
-
-    __slots__ = ("_index",)
-
-    def __init__(self, index: _LazyVersionIndex) -> None:
-        self._index = index
-
-    @override
-    def __getitem__(self, version: Version) -> DistFile:
-        return self._index.pick(version)
+    def sibling_count(self) -> int:
+        """Return the number of releases with multiple wheels, indexing as needed."""
+        versions = self.distinct()
+        if len(self._picked) < len(versions):
+            for version in versions:
+                self.siblings(version)
+        return len(self._siblings)
 
     @override
     def __contains__(self, version: object) -> bool:
         if not isinstance(version, Version):
             return False
         try:
-            self._index.pick(version)
+            self.pick(version)
         except KeyError:
             return False
         return True
 
     @override
     def __iter__(self) -> Iterator[Version]:
-        return iter(self._index.distinct())
+        return iter(self.distinct())
 
     @override
     def __len__(self) -> int:
-        return len(self._index.distinct())
+        return len(self.distinct())
 
 
 class _SiblingWheelsView(Mapping[Version, "list[WheelFile]"]):
@@ -564,7 +561,7 @@ class _SiblingWheelsView(Mapping[Version, "list[WheelFile]"]):
 
     @override
     def __len__(self) -> int:
-        return sum(1 for _ in self)
+        return self._index.sibling_count()
 
 
 def version_dists(
