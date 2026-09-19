@@ -13519,3 +13519,88 @@ class TestExtrasProxyDiagnostics:
             is None
         )
         assert provider.get_no_versions_reason("foo[security]") is None
+
+
+class TestLazyVersionDists:
+    """The provider's own listing is indexed one version at a time."""
+
+    @staticmethod
+    def _provider() -> tuple[Provider, list[tuple[Version, WheelFile | SdistFile]]]:
+        files = [
+            make_wheel("3.0"),
+            make_wheel("2.0"),
+            make_sdist("2.0"),
+            make_wheel("1.0"),
+        ]
+        provider = Provider(make_coordinator(files, package="foo"))
+        return provider, provider.fetch_versions("foo")
+
+    def test_picks_only_the_versions_asked_for(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        provider, version_list = self._provider()
+        picked_versions: list[str] = []
+        real_pick = metadata_resolver.pick_dist
+
+        def counting_pick(dists: Sequence[Any], *args: Any, **kwargs: Any) -> Any:
+            picked_versions.append(dists[0].version)
+            return real_pick(dists, *args, **kwargs)
+
+        monkeypatch.setattr(metadata_resolver, "pick_dist", counting_pick)
+        mapping = provider._wheel_by_version("foo", version_list)
+        assert picked_versions == []
+
+        assert mapping[V("2.0")].version == "2.0"
+        assert picked_versions == ["2.0"]
+        # Memoised: asking again picks nothing.
+        assert mapping[V("2.0")] is mapping[V("2.0")]
+        assert picked_versions == ["2.0"]
+        # Size and order come from the listing without picking.
+        assert len(mapping) == 3
+        assert list(mapping) == [V("3.0"), V("2.0"), V("1.0")]
+        assert picked_versions == ["2.0"]
+
+    def test_an_unlisted_version_is_absent(self) -> None:
+        provider, version_list = self._provider()
+        mapping = provider._wheel_by_version("foo", version_list)
+        assert V("9.9") not in mapping
+        assert mapping.get(V("9.9")) is None
+        with pytest.raises(KeyError):
+            mapping[V("9.9")]
+        assert "2.0" not in mapping
+        assert V("2.0") in mapping
+
+    def test_matches_the_eager_index_of_another_listing(self) -> None:
+        provider, version_list = self._provider()
+        lazy = metadata_resolver.version_dists(provider, "foo", version_list)
+        # A copy is not the provider's cached listing, so it is indexed whole.
+        eager = metadata_resolver.version_dists(provider, "foo", list(version_list))
+        assert isinstance(eager.picked, dict)
+        assert dict(lazy.picked) == eager.picked
+        assert dict(lazy.sibling_wheels) == eager.sibling_wheels
+
+    def test_sibling_wheels_hold_only_tied_versions(self) -> None:
+        first = make_wheel("1.0")
+        second = WheelFile(
+            filename="pkg-1.0-py2.py3-none-any.whl",
+            url="https://example.com/pkg-1.0-py2.py3-none-any.whl",
+            version="1.0",
+            requires_python=None,
+            has_metadata=True,
+            upload_time=None,
+            hashes=(),
+            size=None,
+            metadata_hash=None,
+        )
+        provider = Provider(
+            make_coordinator([make_wheel("2.0"), first, second], package="foo")
+        )
+        version_list = provider.fetch_versions("foo")
+        indexed = metadata_resolver.version_dists(provider, "foo", version_list)
+
+        assert indexed.sibling_wheels.get(V("2.0")) is None
+        assert V("2.0") not in indexed.sibling_wheels
+        assert indexed.sibling_wheels[V("1.0")] == [first, second]
+        assert indexed.sibling_wheels.get(V("9.9")) is None
+        assert list(indexed.sibling_wheels) == [V("1.0")]
+        assert len(indexed.sibling_wheels) == 1
