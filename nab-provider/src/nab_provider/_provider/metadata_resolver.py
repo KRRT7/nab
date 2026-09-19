@@ -10,7 +10,7 @@ from __future__ import annotations
 
 import logging
 from collections.abc import Mapping
-from typing import TYPE_CHECKING, Any, Literal, NamedTuple, TypeGuard
+from typing import TYPE_CHECKING, Any, Literal, TypeGuard
 from urllib.parse import urlsplit
 
 from nab_provider._vendor.packaging.ranges import VersionRange
@@ -392,16 +392,179 @@ def pick_dist_for_metadata(
     return pick_dist(dists, tags, target) if dists else None
 
 
-class VersionDists(NamedTuple):
+class VersionDists:
     """One package's listing indexed by version.
 
     ``picked`` is the dist :func:`pick_dist` answers with for each version.
     ``sibling_wheels`` holds only the versions publishing more than one wheel:
     the tie candidates for that version's pick.
+
+    Over the provider's own cached listing both views are lazy: a version is
+    indexed the first time it is asked for, so a resolve that reads a few of
+    a package's versions never picks a dist for the rest.  Iterating either
+    view indexes every version.
     """
 
-    picked: dict[Version, DistFile]
-    sibling_wheels: dict[Version, list[WheelFile]]
+    __slots__ = ("picked", "sibling_wheels")
+
+    def __init__(
+        self,
+        picked: Mapping[Version, DistFile],
+        sibling_wheels: Mapping[Version, list[WheelFile]],
+    ) -> None:
+        self.picked = picked
+        self.sibling_wheels = sibling_wheels
+
+    @classmethod
+    def lazy(
+        cls,
+        versions: Sequence[tuple[Version, DistFile]],
+        tags: TagSet | None,
+        target: ResolveTarget | None,
+    ) -> VersionDists:
+        """Index ``versions`` on demand; see :class:`_LazyVersionIndex`."""
+        index = _LazyVersionIndex(versions, tags, target)
+        return cls(_PickedView(index), _SiblingWheelsView(index))
+
+
+def _pick_noting_siblings(
+    dists: Sequence[DistFile],
+    tags: TagSet | None,
+    target: ResolveTarget | None,
+    version: Version,
+    sibling_wheels: dict[Version, list[WheelFile]],
+) -> DistFile:
+    """Pick one version's dist, recording its wheels when more than one ties."""
+    # Selected before the pick, which reuses them rather than selecting again.
+    wheels: list[WheelFile] | None = None
+    if len(dists) > 1:
+        wheels = [d for d in dists if isinstance(d, WheelFile)]
+        if len(wheels) > 1:
+            sibling_wheels[version] = wheels
+    return pick_dist(dists, tags, target, wheels)
+
+
+class _LazyVersionIndex:
+    """Picks each version's dist the first time it is asked for.
+
+    ``versions`` is newest-first with each version's dists adjacent, the
+    order the provider keeps its cached listing in, so a version's dists are
+    one bisection away (:func:`dists_at_version`) and nothing is grouped
+    ahead of time.
+    """
+
+    __slots__ = ("_distinct", "_picked", "_siblings", "_tags", "_target", "_versions")
+
+    def __init__(
+        self,
+        versions: Sequence[tuple[Version, DistFile]],
+        tags: TagSet | None,
+        target: ResolveTarget | None,
+    ) -> None:
+        self._versions = versions
+        self._tags = tags
+        self._target = target
+        self._picked: dict[Version, DistFile] = {}
+        self._siblings: dict[Version, list[WheelFile]] = {}
+        self._distinct: list[Version] | None = None
+
+    def distinct(self) -> list[Version]:
+        """Every version of the listing once each, in listing order."""
+        if self._distinct is None:
+            seen: set[Version] = set()
+            distinct: list[Version] = []
+            for version, _ in self._versions:
+                if version not in seen:
+                    seen.add(version)
+                    distinct.append(version)
+            self._distinct = distinct
+        return self._distinct
+
+    def pick(self, version: Version) -> DistFile:
+        """Return the pick for ``version``, raising ``KeyError`` when it is unlisted."""
+        picked = self._picked.get(version)
+        if picked is not None:
+            return picked
+        dists = dists_at_version(self._versions, version)
+        if not dists:
+            raise KeyError(version)
+        picked = _pick_noting_siblings(
+            dists, self._tags, self._target, version, self._siblings
+        )
+        self._picked[version] = picked
+        return picked
+
+    def siblings(self, version: Version) -> list[WheelFile] | None:
+        """Return the tie candidates of ``version``, or ``None`` when it has none."""
+        if version not in self._picked:
+            try:
+                self.pick(version)
+            except KeyError:
+                return None
+        return self._siblings.get(version)
+
+
+class _PickedView(Mapping[Version, "DistFile"]):
+    """The picked dist per version, indexed on first read."""
+
+    __slots__ = ("_index",)
+
+    def __init__(self, index: _LazyVersionIndex) -> None:
+        self._index = index
+
+    @override
+    def __getitem__(self, version: Version) -> DistFile:
+        return self._index.pick(version)
+
+    @override
+    def __contains__(self, version: object) -> bool:
+        if not isinstance(version, Version):
+            return False
+        try:
+            self._index.pick(version)
+        except KeyError:
+            return False
+        return True
+
+    @override
+    def __iter__(self) -> Iterator[Version]:
+        return iter(self._index.distinct())
+
+    @override
+    def __len__(self) -> int:
+        return len(self._index.distinct())
+
+
+class _SiblingWheelsView(Mapping[Version, "list[WheelFile]"]):
+    """The tie-candidate wheels of the versions that have any, on first read."""
+
+    __slots__ = ("_index",)
+
+    def __init__(self, index: _LazyVersionIndex) -> None:
+        self._index = index
+
+    @override
+    def __getitem__(self, version: Version) -> list[WheelFile]:
+        wheels = self._index.siblings(version)
+        if wheels is None:
+            raise KeyError(version)
+        return wheels
+
+    @override
+    def __contains__(self, version: object) -> bool:
+        return (
+            isinstance(version, Version) and self._index.siblings(version) is not None
+        )
+
+    @override
+    def __iter__(self) -> Iterator[Version]:
+        # Which versions tie is known only once every one is picked.
+        index = self._index
+        return iter([v for v in index.distinct() if index.siblings(v) is not None])
+
+    @override
+    def __len__(self) -> int:
+        return sum(1 for _ in self)
 
 
 def version_dists(
@@ -411,14 +574,20 @@ def version_dists(
 ) -> VersionDists:
     """Index ``version_list`` by version, through the per-package memo.
 
-    Only the provider's own cached listing is memoised: another listing under
-    the same name is a different set of artifacts, so it is indexed fresh.
+    Only the provider's own cached listing is memoised, and only it is indexed
+    lazily: the provider keeps it newest-first with each version's dists
+    adjacent, which the lazy index bisects.  Another listing under the same
+    name is a different set of artifacts in no promised order, so it is
+    indexed whole and fresh.
     """
     cacheable = version_list is provider.versions_cache.get(normalized)
     if cacheable:
         cached = provider.version_dists_cache.get(normalized)
         if cached is not None:
             return cached
+        indexed = VersionDists.lazy(version_list, provider.wheel_tags, provider.target)
+        provider.version_dists_cache[normalized] = indexed
+        return indexed
 
     grouped: dict[Version, list[DistFile]] = {}
     for version, dist in version_list:
@@ -427,19 +596,10 @@ def version_dists(
     picked: dict[Version, DistFile] = {}
     sibling_wheels: dict[Version, list[WheelFile]] = {}
     for version, dists in grouped.items():
-        # Selected before the pick, which reuses them rather than selecting again.
-        wheels: list[WheelFile] | None = None
-        if len(dists) > 1:
-            wheels = [d for d in dists if isinstance(d, WheelFile)]
-            if len(wheels) > 1:
-                sibling_wheels[version] = wheels
-
-        picked[version] = pick_dist(dists, provider.wheel_tags, provider.target, wheels)
-
-    indexed = VersionDists(picked, sibling_wheels)
-    if cacheable:
-        provider.version_dists_cache[normalized] = indexed
-    return indexed
+        picked[version] = _pick_noting_siblings(
+            dists, provider.wheel_tags, provider.target, version, sibling_wheels
+        )
+    return VersionDists(picked, sibling_wheels)
 
 
 def pick_dist(

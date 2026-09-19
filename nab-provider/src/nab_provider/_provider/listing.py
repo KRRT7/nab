@@ -168,17 +168,23 @@ def versions_only(
     """Return the cached version-only view for ``normalized``.
 
     One entry per version, in listing order, so a release with both a
-    wheel and an sdist is not listed twice.
+    wheel and an sdist is not listed twice.  The same pass counts each
+    version's records into ``provider.version_record_counts``, for a caller
+    that walks versions but counts records.
     """
     cached = provider.versions_only_cache.get(normalized)
     if cached is None:
-        seen: set[Version] = set()
+        counts: dict[Version, int] = {}
         cached = []
         for version, _ in version_list:
-            if version not in seen:
-                seen.add(version)
+            count = counts.get(version)
+            if count is None:
                 cached.append(version)
+                counts[version] = 1
+            else:
+                counts[version] = count + 1
         provider.versions_only_cache[normalized] = cached
+        provider.version_record_counts[normalized] = counts
     return cached
 
 
@@ -1125,7 +1131,7 @@ def prefetch_batch(
     provider: Provider,
     package: str,
     versions: list[Version],
-    wheel_by_version_map: dict[Version, DistFile],
+    wheel_by_version_map: Mapping[Version, DistFile],
 ) -> list[tuple[Version, str, str, Waitable]]:
     """Submit metadata fetches for a batch of candidates.
 

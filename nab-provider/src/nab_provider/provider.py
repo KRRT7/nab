@@ -708,6 +708,8 @@ class Provider:
 
         # Derived views of versions_cache, built lazily alongside the listing.
         self.versions_only_cache: dict[str, list[Version]] = {}
+        # Filled beside versions_only_cache: records per version of that view.
+        self.version_record_counts: dict[str, dict[Version, int]] = {}
         self.version_dists_cache: dict[str, _metadata_resolver.VersionDists] = {}
 
         # Widening state: the ascending versions_only view per normalized
@@ -1186,7 +1188,7 @@ class Provider:
         self,
         normalized: str,
         version_list: list[tuple[Version, DistFile]],
-    ) -> dict[Version, DistFile]:
+    ) -> Mapping[Version, DistFile]:
         """Return the picked-dist view of ``normalized``'s listing.
 
         See :func:`nab_provider._provider.metadata_resolver.version_dists`.
@@ -1427,7 +1429,7 @@ class Provider:
         normalized: str,
         first: Version,
         rest: Iterator[Version],
-        wheel_by_version: dict[Version, DistFile],
+        wheel_by_version: Mapping[Version, DistFile],
         package: str,
         all_versions: list[Version],
         version_range: RangeProtocol[Version],
@@ -1468,7 +1470,7 @@ class Provider:
         self,
         normalized: str,
         remaining: list[Version],
-        wheel_by_version: dict[Version, DistFile],
+        wheel_by_version: Mapping[Version, DistFile],
         broad_rejections: int,
         version_range: RangeProtocol[Version],
         *,
@@ -2197,7 +2199,7 @@ class Provider:
         self,
         package: str,
         versions: list[Version],
-        wheel_by_version: dict[Version, DistFile],
+        wheel_by_version: Mapping[Version, DistFile],
     ) -> list[tuple[Version, str, str, Waitable]]:
         """See :func:`nab_provider._provider.listing.prefetch_batch`."""
         return _listing.prefetch_batch(self, package, versions, wheel_by_version)

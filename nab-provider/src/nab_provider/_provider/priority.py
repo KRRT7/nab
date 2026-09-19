@@ -8,7 +8,6 @@ first inside a conflict cluster); runaway top culprits get tier 2
 
 from __future__ import annotations
 
-from operator import itemgetter
 from typing import TYPE_CHECKING
 
 from nab_provider._vendor.packaging.ranges import VersionRange
@@ -106,15 +105,19 @@ def compute_matching(
         assert isinstance(version_range, VersionRange)
         versions = provider.versions_cache[normalized]
 
+        # Walked one entry per version rather than per record: a version's
+        # records are in the range together or not at all, so each visited
+        # version adds its record count and the walk is as long as the
+        # listing's version list, not its file list.
+        #
         # prereleases=True counts every in-bounds version; the default policy
         # would buffer in-bounds pre-releases out of the count.
+        distinct = provider.versions_only(normalized, versions)
+        record_counts = provider.version_record_counts[normalized]
         matching = sum(
-            1
-            for _ in version_range.filter(
-                versions,
-                prereleases=True,
-                key=itemgetter(0),
-                assume_sorted="descending",
+            record_counts[version]
+            for version in version_range.filter(
+                distinct, prereleases=True, assume_sorted="descending"
             )
         )
     elif has_local_source:
