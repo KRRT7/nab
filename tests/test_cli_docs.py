@@ -10,6 +10,7 @@ module is on that sdist's exclude list in pyproject.toml.
 
 from __future__ import annotations
 
+import builtins
 import io
 import itertools
 import logging
@@ -23,6 +24,7 @@ import pytest
 from nab._cli import spec as cli_spec
 from nab._cli.parse import parse
 from nab._lock import lock
+from nab._resolve import _make_transport
 from nab.cli import run
 from nab.config.ladder import OPTIONS
 from nab.optiontable import ALL
@@ -943,15 +945,35 @@ class TestCliReferenceMatchesTheseFourBehaviours:
                 rows[cells[0]] = " ".join(cells[1:])
         return rows
 
-    def test_the_backend_paragraph_quotes_the_refusals_it_prints(self) -> None:
-        page = _page(_CLI_REFERENCE)
-        source = Path(run.__module__.replace(".", "/")).parent / "_resolve.py"
-        body = (Path(__file__).resolve().parents[1] / "src" / source).read_text()
+    @pytest.mark.parametrize("backend", ["httpx", "httpx2"])
+    @pytest.mark.parametrize("missing", ["backend", "h2"])
+    def test_the_backend_paragraph_quotes_the_refusals_it_prints(
+        self,
+        backend: str,
+        missing: str,
+        monkeypatch: pytest.MonkeyPatch,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        original_import = builtins.__import__
+        blocked = (
+            f"nab_index.{backend}_async_transport" if missing == "backend" else "h2"
+        )
 
+        def import_without_dependency(
+            name: str, *args: object, **kwargs: object
+        ) -> object:
+            if name == blocked:
+                raise ImportError(name)
+            return original_import(name, *args, **kwargs)
+
+        monkeypatch.setattr(builtins, "__import__", import_without_dependency)
+        with pytest.raises(SystemExit) as caught:
+            _make_transport(backend)
+
+        assert caught.value.code == 1
+        page = _page(_CLI_REFERENCE)
         assert "ImportError" not in page
-        for fragment in ("httpx is not installed", "without HTTP/2 support"):
-            assert fragment in page, fragment
-            assert fragment in body, fragment
+        assert capsys.readouterr().err.strip() in page
 
     def test_the_exit_two_row_names_an_unknown_action(self, tmp_path: Path) -> None:
         assert run(("cache", "bogus", "--cache-dir", str(tmp_path))) == 2

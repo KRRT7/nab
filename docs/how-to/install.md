@@ -32,17 +32,16 @@ is `uv` on recent pipx; the `pip` backend works equivalently.
 
 ## Picking an HTTP backend
 
-`nab-index` ships urllib3 by default. `httpx` is opt-in via an extra:
+`nab-index` ships urllib3 by default. Install an extra to use httpx or httpx2:
 
 ```bash
-uv tool install 'nab[httpx]'
+pip install 'nab[httpx2]'
+nab lock --http-backend httpx2
 ```
 
-Pick it at run-time with `--http-backend httpx`. The extra installs
-httpx along with the `h2` package the backend needs. If either is
-missing, selecting the backend exits with an install hint.
+For httpx, install `nab[httpx]` and select `--http-backend httpx`. Each extra includes the `h2` package for HTTP/2 support. Missing dependencies produce an installation hint when selecting the backend.
 
-Both backends send the same `User-Agent`, `nab-index/<version>`.
+All backends use system certificates through truststore and send `User-Agent: nab-index/<version>`.
 
 ## Throw-away invocations
 

@@ -1024,7 +1024,7 @@ resolve.
 | -------- | ------ | ------ |
 | `NAB_OFFLINE` | `offline` | `1`/`0`/`true`/`false`. |
 | `NAB_CACHE_DIR` | `cache-dir` | Cache root path. |
-| `NAB_HTTP_BACKEND` | `http-backend` | `urllib3` or `httpx`. |
+| `NAB_HTTP_BACKEND` | `http-backend` | `urllib3`, `httpx`, or `httpx2`. |
 | `NAB_MAX_CONCURRENCY` | `max-concurrency` | Parallel HTTP fetches, for the resolve as well as the downloads (at least `1`). |
 
 An unknown `NAB_*` name is ignored with a warning; `-qq` and

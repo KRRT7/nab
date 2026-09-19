@@ -31,6 +31,7 @@ dependencies = [
 
 [project.optional-dependencies]
 httpx = ["nab-index[httpx]==0.0.18.dev0"]
+httpx2 = ["nab-index[httpx2]==0.0.18.dev0"]
 
 [project.urls]
 Homepage = "https://github.com/notatallshaw/nab"
@@ -87,6 +88,7 @@ tests = [
     "hypothesis>=6.100",
     "respx>=0.22",
     "httpx[http2]>=0.28",
+    "httpx2[http2]>=2.12",
     "tomlkit>=0.13",
 ]
 crosshair = [

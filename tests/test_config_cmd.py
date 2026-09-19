@@ -74,6 +74,7 @@ _CLI_FLAG_CASES: tuple[tuple[str, str, str], ...] = (
     ("offline", "True", "true"),
     ("cache-dir", "wheels-cache", "wheels-cache"),
     ("http-backend", "httpx", "httpx"),
+    ("http-backend", "httpx2", "httpx2"),
     ("max-concurrency", "5", "5"),
 )
 

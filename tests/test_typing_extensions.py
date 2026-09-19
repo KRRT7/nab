@@ -1,12 +1,8 @@
-"""No import path into nab loads typing_extensions.
+"""Nab modules do not import typing_extensions at runtime.
 
-Only ``override`` is needed at class-body time, and each package reads it
-off ``typing`` through its own ``_compat`` shim.  The dependency stays
-declared for ``Self`` and ``Protocol``, which a checker reads and the
-interpreter never loads.
-
-The probe runs in a fresh subprocess so earlier test imports cannot mask a
-dependency.
+Preload httpx2 before blocking typing_extensions: the optional library uses
+its own dependency on Python 3.10 through 3.12. Nab's modules must still use
+their _compat shims when imported in the fresh subprocess.
 """
 
 from __future__ import annotations
@@ -20,6 +16,8 @@ _PROBE = """
 import importlib
 import pkgutil
 import sys
+
+import httpx2
 
 sys.modules["typing_extensions"] = None
 

@@ -53,6 +53,7 @@ from nab.config.ladder import SourceRoots
 from nab.config.model import read_pyproject_config
 from nab.output import Printer, ProgressReporter, Verbosity
 from nab_index.atomic import atomic_write_text
+from nab_index.httpx2_async_transport import Httpx2AsyncTransport
 from nab_index.httpx_async_transport import HttpxAsyncTransport
 from nab_index.local_index import LocalIndexClient, UnreadableLocalIndexError
 from nab_index.transport import HttpError
@@ -6124,7 +6125,7 @@ class TestLayeredRunKnobSurface:
 
     def test_http_backend_shows_its_backends(self) -> None:
         for command in ("lock", "download", "config"):
-            assert "--http-backend {urllib3,httpx}" in _command_help(command)
+            assert "--http-backend {urllib3,httpx,httpx2}" in _command_help(command)
 
     def test_max_concurrency_takes_a_number(self) -> None:
         for command in ("download", "config"):
@@ -6956,11 +6957,18 @@ class TestProgressReachesTheResolve:
 class TestMakeTransport:
     """Each HttpBackend value resolves to its corresponding transport class."""
 
-    def test_httpx(self) -> None:
-        """``"httpx"`` resolves to :class:`HttpxAsyncTransport`."""
-        transport = _make_transport("httpx")
+    @pytest.mark.parametrize(
+        ("backend", "transport_type"),
+        [("httpx", HttpxAsyncTransport), ("httpx2", Httpx2AsyncTransport)],
+    )
+    def test_optional_backend(
+        self,
+        backend: str,
+        transport_type: type[HttpxAsyncTransport | Httpx2AsyncTransport],
+    ) -> None:
+        transport = _make_transport(backend)
         try:
-            assert isinstance(transport, HttpxAsyncTransport)
+            assert isinstance(transport, transport_type)
         finally:
             asyncio.run(transport.aclose())
 
@@ -6972,27 +6980,35 @@ class TestMakeTransport:
         finally:
             asyncio.run(transport.aclose())
 
-    def test_httpx_missing_exits_with_hint(
-        self, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+    @pytest.mark.parametrize("backend", ["httpx", "httpx2"])
+    def test_optional_backend_missing_exits_with_hint(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+        capsys: pytest.CaptureFixture[str],
+        backend: str,
     ) -> None:
-        """When httpx isn't installed, the CLI exits with an installation hint."""
+        """A missing optional backend exits with an installation hint."""
         original_import = builtins.__import__
 
         def fake_import(name: str, *args: object, **kwargs: object) -> object:
-            if name == "nab_index.httpx_async_transport":
+            if name == f"nab_index.{backend}_async_transport":
                 raise ImportError(name)
             return original_import(name, *args, **kwargs)
 
         monkeypatch.setattr(builtins, "__import__", fake_import)
         with pytest.raises(SystemExit) as info:
-            _make_transport("httpx")
+            _make_transport(backend)
         assert info.value.code == 1
-        assert "nab[httpx]" in capsys.readouterr().err
+        assert f"nab[{backend}]" in capsys.readouterr().err
 
-    def test_httpx_without_h2_exits_with_hint(
-        self, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+    @pytest.mark.parametrize("backend", ["httpx", "httpx2"])
+    def test_optional_backend_without_h2_exits_with_hint(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+        capsys: pytest.CaptureFixture[str],
+        backend: str,
     ) -> None:
-        """When httpx is installed without ``h2``, the CLI exits with a hint."""
+        """An optional backend installed without ``h2`` exits with a hint."""
         original_import = builtins.__import__
 
         def fake_import(name: str, *args: object, **kwargs: object) -> object:
@@ -7002,12 +7018,12 @@ class TestMakeTransport:
 
         monkeypatch.setattr(builtins, "__import__", fake_import)
         with pytest.raises(SystemExit) as info:
-            _make_transport("httpx")
+            _make_transport(backend)
         assert info.value.code == 1
         err = capsys.readouterr().err
-        assert "nab[httpx]" in err
+        assert f"nab[{backend}]" in err
         assert "HTTP/2" in err
-        assert "httpx is not installed" not in err
+        assert f"{backend} is not installed" not in err
 
 
 class _RecordingTransport:
