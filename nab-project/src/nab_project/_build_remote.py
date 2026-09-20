@@ -18,6 +18,9 @@ from nab_index.client import extract_sdist_archive
 from nab_provider.errors import UnsupportedSdistError
 
 if TYPE_CHECKING:
+    from collections.abc import Callable
+
+    from nab_index.transport import AsyncHttpTransport
     from nab_provider.fetch_port import FetchPort
     from nab_provider.metadata import WheelMetadata
 
@@ -31,6 +34,8 @@ def build_remote_sdist(
     url: str,
     sdist_hashes: tuple[tuple[str, str], ...],
     build_config: ResolveInputs | None,
+    *,
+    transport_factory: Callable[[], AsyncHttpTransport] | None = None,
 ) -> WheelMetadata:
     """Download the sdist at ``url``, extract it, and build it.
 
@@ -82,6 +87,7 @@ def build_remote_sdist(
             return build_backend.extract_metadata(
                 source_dir,
                 config=build_config,
+                transport_factory=transport_factory,
                 offline=port.offline,
             )
         except BuildBackendError as exc:

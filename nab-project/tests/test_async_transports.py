@@ -37,6 +37,7 @@ from nab_index.client import (
     WheelFile,
     _extract_sdist_files,
 )
+from nab_index.httpx2_async_transport import Httpx2AsyncTransport
 from nab_index.httpx_async_transport import HttpxAsyncTransport, _HttpxResponse
 from nab_index.retry import GET_RETRY, next_delay
 from nab_index.retry_limits import MAX_REDIRECTS, MAX_RETRIES, RETRY_STATUSES
@@ -1946,6 +1947,7 @@ SDIST_SHA256 = hashlib.sha256(SDIST_BODY).hexdigest()
 TRANSPORTS = [
     pytest.param(Urllib3AsyncTransport, id="urllib3"),
     pytest.param(lambda: HttpxAsyncTransport(http2=False), id="httpx"),
+    pytest.param(lambda: Httpx2AsyncTransport(http2=False), id="httpx2"),
 ]
 
 

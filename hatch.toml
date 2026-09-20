@@ -28,7 +28,7 @@ workspace.members = [
     "nab-project",
     "nab-index",
 ]
-features = ["httpx"]
+features = ["httpx", "httpx2"]
 extra-dependencies = [
     "hypothesis>=6.100",
     "pytest-timeout>=2.3",

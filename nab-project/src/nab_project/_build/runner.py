@@ -58,7 +58,9 @@ from .env import BuildChain, BuildEnvError, NabBuildEnv
 from .errors import BuildBackendError
 
 if TYPE_CHECKING:
-    from collections.abc import Iterator
+    from collections.abc import Callable, Iterator
+
+    from nab_index.transport import AsyncHttpTransport
 
     from ..inputs import ResolveInputs
 
@@ -81,6 +83,7 @@ def run_build_backend(
     config: ResolveInputs,
     offline: bool = False,
     chain: BuildChain = (),
+    transport_factory: Callable[[], AsyncHttpTransport] | None = None,
 ) -> WheelMetadata:
     """Extract wheel metadata for ``source_dir`` via the build backend.
 
@@ -96,7 +99,8 @@ def run_build_backend(
     The build runs in an isolated venv driven by
     :class:`NabBuildEnv`; nothing in the user's main environment is
     perturbed.  The build env owns its own HTTP transport (see
-    :class:`NabBuildEnv` for why) so callers do not pass one in.
+    :class:`NabBuildEnv` for why). ``transport_factory`` supplies fresh clients
+    for build-dependency resolution and downloads.
 
     ``chain`` names the builds this one is nested inside; see
     :data:`~nab_project._build.env.BuildChain`.
@@ -105,7 +109,12 @@ def run_build_backend(
 
     with (
         _prepared_project(
-            source_dir, data, config=config, offline=offline, chain=chain
+            source_dir,
+            data,
+            config=config,
+            offline=offline,
+            chain=chain,
+            transport_factory=transport_factory,
         ) as (project, backend),
         _metadata_output_dir(backend) as out_str,
     ):
@@ -125,6 +134,7 @@ def build_wheel_for_install(
     config: ResolveInputs,
     offline: bool = False,
     chain: BuildChain = (),
+    transport_factory: Callable[[], AsyncHttpTransport] | None = None,
 ) -> Path:
     """Build ``source_dir`` into a wheel under ``output_dir`` and return its path.
 
@@ -139,7 +149,12 @@ def build_wheel_for_install(
     data = _read_pyproject(source_dir)
 
     with _prepared_project(
-        source_dir, data, config=config, offline=offline, chain=chain
+        source_dir,
+        data,
+        config=config,
+        offline=offline,
+        chain=chain,
+        transport_factory=transport_factory,
     ) as (project, backend):
         try:
             return Path(project.build("wheel", str(output_dir)))
@@ -175,6 +190,7 @@ def _prepared_project(
     config: ResolveInputs,
     offline: bool,
     chain: BuildChain,
+    transport_factory: Callable[[], AsyncHttpTransport] | None = None,
 ) -> Iterator[tuple[build.ProjectBuilder, str]]:
     """Yield a builder for ``source_dir`` in an env holding its build requirements.
 
@@ -188,7 +204,11 @@ def _prepared_project(
 
     try:
         with NabBuildEnv(
-            requires=list(requires), config=config, offline=offline, chain=chain
+            requires=list(requires),
+            config=config,
+            offline=offline,
+            chain=chain,
+            transport_factory=transport_factory,
         ) as env:
             project = build.ProjectBuilder.from_isolated_env(
                 env,

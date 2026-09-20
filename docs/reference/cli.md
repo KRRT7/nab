@@ -222,7 +222,7 @@ directory uses: `cache-dir` is read off the config source ladder, so a
 | `--cache-dir PATH` | `~/.cache/nab` | Override the on-disk cache root. |
 | `--no-cache` | off | Disable cache reads and writes. VCS and archive sources use temporary directories and are refetched on networked runs. |
 | `--offline {True,False}` | unset | Use cache only, never hit the network. Layered: `--offline True` forces offline, `--offline False` forces network even over a lower `offline = true`. Bare `--offline` / `--no-offline` are shorthands for `True` / `False`. |
-| `--http-backend {urllib3,httpx}` | `urllib3` | Pick the async transport for fetches. Layered, so it can also be set in an `nab.toml` or `NAB_HTTP_BACKEND`. `httpx` needs its extra (see [Install nab](../how-to/install.md)). |
+| `--http-backend {urllib3,httpx,httpx2}` | `urllib3` | Pick the async transport for index, artifact, and build-dependency fetches. Layered, so it can also be set in an `nab.toml` or `NAB_HTTP_BACKEND`. `httpx` and `httpx2` need their extras (see [Install nab](../how-to/install.md)). |
 
 A name absent from the index is remembered for a short window, so a
 repeated lookup is answered from cache, offline included.
@@ -245,6 +245,8 @@ another without its extra prints one of these and exits 1:
 
     error: httpx is not installed; run `pip install nab[httpx]`
     error: httpx is installed without HTTP/2 support; run `pip install nab[httpx]`
+    error: httpx2 is not installed; run `pip install nab[httpx2]`
+    error: httpx2 is installed without HTTP/2 support; run `pip install nab[httpx2]`
 
 A cache root nab cannot write to (read-only, full, over quota) does not
 stop an index fetch. The run warns once and carries on, serving what the

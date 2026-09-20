@@ -248,6 +248,7 @@ class FetchCoordinator:
         index_cache_floors: Mapping[str, int] | None = None,
         on_fetch: Callable[[], None] | None = None,
         build_config: ResolveInputs | None = None,
+        build_transport_factory: Callable[[], AsyncHttpTransport] | None = None,
     ) -> None:
         """Create a coordinator that wraps ``transport``.
 
@@ -312,6 +313,7 @@ class FetchCoordinator:
             self._cache = NullCache()
         self._cache_dir = cache_dir
         self._build_config = build_config
+        self._build_transport_factory = build_transport_factory
         self._index_routes = list(index_routes or [])
         self._index_cache_floors = dict(index_cache_floors or {})
         # The sync warm-hit path serves one shape only: a single non-file index
@@ -717,7 +719,12 @@ class FetchCoordinator:
         self._check_alive()
         self.index.store_source(
             request.package,
-            materialize_source(self, request, self._build_config),
+            materialize_source(
+                self,
+                request,
+                self._build_config,
+                transport_factory=self._build_transport_factory,
+            ),
         )
         return _done_event()
 
@@ -736,7 +743,13 @@ class FetchCoordinator:
         """
         self._check_alive()
         built: WheelMetadata = build_remote_sdist(
-            self, package, version, url, sdist_hashes, self._build_config
+            self,
+            package,
+            version,
+            url,
+            sdist_hashes,
+            self._build_config,
+            transport_factory=self._build_transport_factory,
         )
         self.index.store_built_metadata(package, version, built)
         return _done_event()

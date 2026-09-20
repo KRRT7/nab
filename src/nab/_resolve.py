@@ -13,6 +13,7 @@ from __future__ import annotations
 import gc
 import sys
 from contextlib import contextmanager
+from functools import partial
 from typing import TYPE_CHECKING
 
 import tomli
@@ -145,26 +146,35 @@ def _make_urllib3_transport() -> AsyncHttpTransport:
 def _make_transport(backend: str) -> AsyncHttpTransport:
     """Return the transport for ``backend``.
 
-    Importing either transport module loads its HTTP library and truststore,
-    so both imports stay local: the CLI itself needs neither, and httpx is an
-    optional extra a urllib3-only install will not have.
+    Optional transports are imported only when selected.
     """
-    if backend == "httpx":
+    make_transport: Callable[[], AsyncHttpTransport]
+    if backend in {"httpx", "httpx2"}:
         try:
-            from nab_index.httpx_async_transport import (  # noqa: PLC0415
-                HttpxAsyncTransport,
-            )
-        except ImportError:
-            printer().error("httpx is not installed; run `pip install nab[httpx]`")
-            sys.exit(1)
+            if backend == "httpx":
+                from nab_index.httpx_async_transport import (  # noqa: PLC0415 - optional dependency
+                    HttpxAsyncTransport,
+                )
 
-        # httpx raises ImportError from its client constructor when h2 is missing.
-        try:
-            return HttpxAsyncTransport()
+                make_transport = HttpxAsyncTransport
+            else:
+                from nab_index.httpx2_async_transport import (  # noqa: PLC0415 - optional dependency
+                    Httpx2AsyncTransport,
+                )
+
+                make_transport = Httpx2AsyncTransport
         except ImportError:
             printer().error(
-                "httpx is installed without HTTP/2 support; "
-                "run `pip install nab[httpx]`"
+                f"{backend} is not installed; run `pip install nab[{backend}]`"
+            )
+            sys.exit(1)
+
+        try:
+            return make_transport()
+        except ImportError:
+            printer().error(
+                f"{backend} is installed without HTTP/2 support; "
+                f"run `pip install nab[{backend}]`"
             )
             sys.exit(1)
 
@@ -197,8 +207,8 @@ def _make_resolve_transport(backend: str, *, offline: bool) -> AsyncHttpTranspor
     """Return the transport for a resolve on ``backend``.
 
     An offline resolve is served from the cache and asks for no URL, so the
-    urllib3 transport is built only if something does. httpx is built up front
-    either way: a missing httpx exits the CLI, which has to happen on the main
+    urllib3 transport is built only if something does. Optional backends are built
+    up front: missing dependencies exit the CLI, which must happen on the main
     thread before the resolve starts.
     """
     if offline and backend == "urllib3":
@@ -276,6 +286,7 @@ def _resolve(  # noqa: PLR0913, PLR0912, C901 - one wrapper per resolve_for_targ
     offline: bool,
     transport: AsyncHttpTransport,
     failure_prefix: str,
+    http_backend: str = "urllib3",
     groups: tuple[str, ...] = (),
     extras: tuple[str, ...] = (),
     build_requirements: bool = False,
@@ -302,6 +313,7 @@ def _resolve(  # noqa: PLR0913, PLR0912, C901 - one wrapper per resolve_for_targ
                     transport,
                     targets=targets,
                     inputs=config.resolve_inputs(),
+                    build_transport_factory=partial(_make_transport, http_backend),
                     cache_dir=cache_dir,
                     offline=offline,
                     groups=groups,

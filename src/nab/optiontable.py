@@ -479,7 +479,7 @@ class UserKeys(Table, on=_LAYERED, scope=Scope.USER, docs="reference/cli.md"):
             render=hooks.render_text,
             # The one written label: the flag offers the alias's order and
             # ``nab config explain`` prints them alphabetically.
-            label="enum(httpx|urllib3)",
+            label="enum(httpx|httpx2|urllib3)",
         ),
         env=True,
         help="the transport index and artefact fetches go through",

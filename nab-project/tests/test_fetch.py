@@ -35,7 +35,7 @@ from nab_index.lazy_wheel import RangeOutcome
 from nab_index.local_index import LocalIndexClient
 from nab_index.multi_index import IndexConfig, MultiIndexClient
 from nab_index.parsed_listing import encode as encode_parsed
-from nab_index.transport import HttpError, HttpResponse
+from nab_index.transport import AsyncHttpTransport, HttpError, HttpResponse
 from nab_project.fetch import (
     _WARM_SYNC_MIN_BLOB_BYTES,
     FetchCoordinator,
@@ -1900,8 +1900,11 @@ class TestFetchCoordinator:
         not hasattr(tarfile, "data_filter"),
         reason="sdist extraction requires the tar data filter (PEP 706)",
     )
+    @pytest.mark.parametrize("transport_factory", [None, HttpxAsyncTransport])
     def test_request_built_metadata_builds_the_downloaded_sdist(
-        self, monkeypatch: pytest.MonkeyPatch
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+        transport_factory: Callable[[], AsyncHttpTransport] | None,
     ) -> None:
         """The build rung downloads, extracts, and stores what the backend said.
 
@@ -1934,13 +1937,19 @@ class TestFetchCoordinator:
 
         monkeypatch.setattr("nab_project.build_backend.extract_metadata", fake_build)
         config = ResolveInputs()
-        with _coord(build_config=config) as coord:
+        with _coord(
+            build_config=config, build_transport_factory=transport_factory
+        ) as coord:
             event = coord.request_built_metadata(
                 "pkg", "1.0", "https://files.example.com/pkg-1.0.tar.gz", ()
             )
             assert event.wait(timeout=5)
             assert coord.index.get_built_metadata("pkg", "1.0") is built
-        assert seen == {"config": config, "offline": False}
+        assert seen == {
+            "config": config,
+            "offline": False,
+            "transport_factory": transport_factory,
+        }
 
     def test_request_direct_archive_deduplicates(self, tmp_path: Path) -> None:
         """A direct archive already in flight hands back its pending event."""

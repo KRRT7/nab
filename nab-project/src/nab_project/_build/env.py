@@ -40,6 +40,7 @@ from installer import install as installer_install
 from installer.destinations import SchemeDictionaryDestination
 from installer.sources import WheelFile
 from installer.utils import get_launcher_kind
+
 from nab_index.client import extract_sdist_archive
 from nab_index.urllib3_async_transport import Urllib3AsyncTransport
 from nab_provider._vendor.packaging.requirements import InvalidRequirement
@@ -256,14 +257,16 @@ class NabBuildEnv:
         *,
         config: ResolveInputs,
         offline: bool = False,
-        transport_factory: Callable[[], AsyncHttpTransport] = Urllib3AsyncTransport,
+        transport_factory: Callable[[], AsyncHttpTransport] | None = None,
         chain: BuildChain = (),
     ) -> None:
         """Capture inputs; the venv and inner resolve happen in __enter__."""
         self._requires = list(requires)
         self._config = config
         self._offline = offline
-        self._transport_factory = transport_factory
+        self._transport_factory = (
+            Urllib3AsyncTransport if transport_factory is None else transport_factory
+        )
         self._chain = tuple(chain)
 
         self._tmpdir: tempfile.TemporaryDirectory[str] | None = None
@@ -467,9 +470,7 @@ class NabBuildEnv:
 
         inner_inputs = _inner_resolve_inputs(self._config)
 
-        # download_lock closes its transport, and ``install`` may call
-        # this again for ``get_requires_for_build_wheel`` follow-ups;
-        # build a fresh transport each time.
+        # Resolution and downloads each close their client on their own event loop.
         transport = self._transport_factory()
         try:
             result = resolve_for_targets(
@@ -499,7 +500,9 @@ class NabBuildEnv:
         )
 
         try:
-            download_result = download_lock(lock_input, transport, wheel_dir)
+            download_result = download_lock(
+                lock_input, self._transport_factory(), wheel_dir
+            )
         except DownloadError as exc:
             # A build dependency failed its HTTP fetch or hash check. Wrap it so
             # the outer resolve skips this sdist rather than aborting on the raw
@@ -636,6 +639,7 @@ class NabBuildEnv:
                     config=self._config,
                     offline=self._offline,
                     chain=(*self._chain, label),
+                    transport_factory=self._transport_factory,
                 )
             except BuildBackendError as exc:
                 msg = f"build requirement {label} could not be built: {exc}"

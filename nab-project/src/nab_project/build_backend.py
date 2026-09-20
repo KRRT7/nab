@@ -36,8 +36,10 @@ from ._build.errors import (
 from .paths import PathState, is_absent_error, path_state
 
 if TYPE_CHECKING:
+    from collections.abc import Callable
     from pathlib import Path
 
+    from nab_index.transport import AsyncHttpTransport
     from nab_provider._vendor.packaging.requirements import Requirement
 
     from .inputs import ResolveInputs
@@ -205,6 +207,7 @@ def extract_metadata(
     *,
     config: ResolveInputs | None = None,
     offline: bool = False,
+    transport_factory: Callable[[], AsyncHttpTransport] | None = None,
 ) -> WheelMetadata:
     """Extract metadata for a source directory.
 
@@ -219,7 +222,7 @@ def extract_metadata(
 
     The build env owns its own HTTP transport (see
     :class:`~nab_project._build.env.NabBuildEnv` for why); callers
-    do not pass one in.
+    may supply ``transport_factory`` to create its clients.
     """
     static = extract_static_metadata(source_dir)
     if static is not None:
@@ -236,4 +239,6 @@ def extract_metadata(
     # which we should not pay for in static-only callers.
     from ._build.runner import run_build_backend  # noqa: PLC0415
 
-    return run_build_backend(source_dir, config=config, offline=offline)
+    return run_build_backend(
+        source_dir, config=config, offline=offline, transport_factory=transport_factory
+    )

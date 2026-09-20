@@ -472,7 +472,7 @@ def parse_path(value: object, where: str) -> Path:
     return Path(value)
 
 
-HTTP_BACKENDS = ("urllib3", "httpx")
+HTTP_BACKENDS = ("urllib3", "httpx", "httpx2")
 
 
 def parse_http_backend(value: object, where: str) -> str:

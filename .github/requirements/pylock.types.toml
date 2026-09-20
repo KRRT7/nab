@@ -627,6 +627,35 @@ size = 78784
 sha256 = "2d400746a40668fc9dec9810239072b40b4484b640a8c38fd654a024c7a1bf55"
 
 [[packages]]
+name = "httpcore2"
+version = "2.12.0"
+marker = "\"types\" in dependency_groups"
+requires-python = ">=3.10"
+dependencies = [
+    { name = "h11" },
+    { name = "truststore" },
+]
+index = "https://pypi.org/simple/"
+
+[packages.sdist]
+name = "httpcore2-2.12.0.tar.gz"
+upload-time = 2026-08-18 13:22:08.211019+00:00
+url = "https://files.pythonhosted.org/packages/be/ad/f4f0e57345f1870f3e8cb624e058d7eca6e5a27d33bcc3311d9b618734cd/httpcore2-2.12.0.tar.gz"
+size = 67548
+
+[packages.sdist.hashes]
+sha256 = "9293522bba0aa7c4c8e9e3f040c16575bd8868e155a77fa30c7a9085a5eae648"
+
+[[packages.wheels]]
+name = "httpcore2-2.12.0-py3-none-any.whl"
+upload-time = 2026-08-18 13:22:05.854488+00:00
+url = "https://files.pythonhosted.org/packages/d2/74/d370e55600d9bcfa0d9794b0166126d49291a3d2b20c268fc98c453a4948/httpcore2-2.12.0-py3-none-any.whl"
+size = 83074
+
+[packages.wheels.hashes]
+sha256 = "7e04258ce01013d7d615e5b910a3b27fac937d7a95038227e79652b4ba3b4ceb"
+
+[[packages]]
 name = "httpx"
 version = "0.28.1"
 marker = "\"types\" in dependency_groups"
@@ -657,6 +686,39 @@ size = 73517
 
 [packages.wheels.hashes]
 sha256 = "d909fcccc110f8c7faf814ca82a9a4d816bc5a6dbfea25d6591d6985b8ba59ad"
+
+[[packages]]
+name = "httpx2"
+version = "2.12.0"
+marker = "\"types\" in dependency_groups"
+requires-python = ">=3.10"
+dependencies = [
+    { name = "anyio" },
+    { name = "h2" },
+    { name = "httpcore2" },
+    { name = "idna" },
+    { name = "truststore" },
+    { name = "typing-extensions" },
+]
+index = "https://pypi.org/simple/"
+
+[packages.sdist]
+name = "httpx2-2.12.0.tar.gz"
+upload-time = 2026-08-18 13:22:09.086723+00:00
+url = "https://files.pythonhosted.org/packages/7f/f8/579a8b51e42e38ee32647df9f08aa25643ae788e275cc625b199829c4671/httpx2-2.12.0.tar.gz"
+size = 100040
+
+[packages.sdist.hashes]
+sha256 = "7631fe9887a8a2275f4a2540e053aa670fcc50742864a9ae7c66e609fdcf12cf"
+
+[[packages.wheels]]
+name = "httpx2-2.12.0-py3-none-any.whl"
+upload-time = 2026-08-18 13:22:06.834669+00:00
+url = "https://files.pythonhosted.org/packages/c8/95/411ba65569158e862368917aaf56597f3e5fa3b91b0502919638465a08f3/httpx2-2.12.0-py3-none-any.whl"
+size = 95427
+
+[packages.wheels.hashes]
+sha256 = "cc8b6eecb8661c146b8f89a60e97456ee086e91a784ed31ac450c3a9e613dd36"
 
 [[packages]]
 name = "hyperframe"
@@ -2429,7 +2491,7 @@ size = 10724603
 sha256 = "c401b88742e8a501c68f4ec605d7ebc6a63401653c15f0173a76febe161bd53e"
 
 [tool.nab]
-nab-version = "0.0.16.dev0"
+nab-version = "0.0.18.dev0"
 created-at = 2026-09-02 00:02:40.601090+00:00
 command-line = [
     "nab",
@@ -2441,7 +2503,6 @@ command-line = [
     "--no-emit-workspace",
     "--output",
     ".github/requirements/pylock.types.toml",
-    "--upgrade",
 ]
 input-path = "pyproject.toml"
 mode = "universal"

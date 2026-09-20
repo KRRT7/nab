@@ -88,7 +88,7 @@ from .inputs import ResolveInputs
 from .lockfile import LockInput, TargetLock
 
 if TYPE_CHECKING:
-    from collections.abc import Iterator, Mapping, Sequence
+    from collections.abc import Callable, Iterator, Mapping, Sequence
 
     from nab_index.transport import AsyncHttpTransport
     from nab_provider._vendor.packaging.requirements import Requirement
@@ -141,6 +141,7 @@ def resolve_for_targets(  # noqa: PLR0913 - the knobs of a project resolve
     resolution_strategy: ResolutionStrategy | None = None,
     progress: ProgressSink | None = None,
     max_concurrency: int = DEFAULT_MAX_CONCURRENCY,
+    build_transport_factory: Callable[[], AsyncHttpTransport] | None = None,
 ) -> ResolveResult:
     """Resolve the project at ``path`` for each of ``targets``.
 
@@ -148,6 +149,8 @@ def resolve_for_targets(  # noqa: PLR0913 - the knobs of a project resolve
     ``inputs`` the settings it read out of the project.  ``transport`` is
     the caller's, so the HTTP library choice stays outside nab-project;
     ``cache_dir`` and ``offline`` are runtime overrides from the CLI.
+    ``build_transport_factory`` creates fresh clients for build dependencies;
+    omitting it selects urllib3 for those fetches.
 
     ``groups`` and ``extras`` name PEP 735 groups and
     ``[project.optional-dependencies]`` keys to fold in;
@@ -197,6 +200,7 @@ def resolve_for_targets(  # noqa: PLR0913 - the knobs of a project resolve
         index_cache_floors=index_cache_floors(inputs),
         on_fetch=progress.on_fetch if progress is not None else None,
         build_config=inputs,
+        build_transport_factory=build_transport_factory,
         max_concurrency=max_concurrency,
     ) as coordinator:
         return resolve_with_coordinator(

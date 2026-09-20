@@ -159,6 +159,7 @@ def download(  # noqa: PLR0913 - one keyword per flag is the public surface
         cache_dir=effective_cache_dir,
         offline=settings.offline,
         transport=transport,
+        http_backend=settings.http_backend,
         failure_prefix="cannot download",
         groups=selected_groups,
         extras=selected_extras,

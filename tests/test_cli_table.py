@@ -121,7 +121,7 @@ _WRITTEN_LABELS = {
     "index": "table(index-override)",
     "conflicts": "array-of-tables(members,policy)",
     "matrix": "table(python,platforms)",
-    "http-backend": "enum(httpx|urllib3)",
+    "http-backend": "enum(httpx|httpx2|urllib3)",
 }
 
 

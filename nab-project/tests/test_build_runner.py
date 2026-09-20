@@ -12,6 +12,7 @@ The end-to-end test against a real source distribution is marked
 
 from __future__ import annotations
 
+import asyncio
 import base64
 import hashlib
 import io
@@ -23,11 +24,14 @@ import sys
 import sysconfig
 import tarfile
 import tempfile
+import threading
 import zipfile
-from collections.abc import Callable
-from contextlib import AbstractContextManager
+from collections.abc import Callable, Iterator
+from contextlib import AbstractContextManager, contextmanager
 from dataclasses import replace
 from datetime import datetime, timezone
+from functools import partial
+from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 from importlib.util import cache_from_source, module_from_spec, spec_from_file_location
 from pathlib import Path
 from typing import Any
@@ -40,7 +44,11 @@ import tomli
 from installer.utils import SCHEME_NAMES, Scheme
 
 from nab_index.client import SdistFile, WheelFile
+from nab_index.httpx2_async_transport import Httpx2AsyncTransport
+from nab_index.httpx_async_transport import HttpxAsyncTransport
 from nab_index.multi_index import IndexConfig
+from nab_index.transport import AsyncHttpTransport, HttpResponse
+from nab_index.urllib3_async_transport import Urllib3AsyncTransport
 from nab_project._build import env as env_mod
 from nab_project._build import runner as runner_mod
 from nab_project._build.env import (
@@ -69,7 +77,7 @@ from nab_project.lockfile import (
     TargetLock,
     WheelArtifact,
 )
-from nab_project.resolve import ResolveResult, TargetResult
+from nab_project.resolve import ResolveResult, TargetResult, resolve_for_targets
 from nab_provider._provider.metadata_resolver import pick_dist
 from nab_provider._vendor.packaging.requirements import Requirement
 from nab_provider._vendor.packaging.utils import canonicalize_name
@@ -321,7 +329,7 @@ def _make_local_index(
     sdist_only: bool = False,
     requires: tuple[str, ...] = (),
 ) -> None:
-    """Create a PEP 503 ``file://`` index serving ``name``.
+    """Create a PEP 503 index directory serving ``name``.
 
     Serves a wheel beside the sdist by default.  ``sdist_only`` serves
     an sdist alone, and that sdist is one a build can turn into a
@@ -4291,3 +4299,204 @@ class TestEndToEndAirflow:
 # Silence pyflakes when sys/Path aren't used directly above.
 _ = sys
 _ = Path
+
+
+class _BuildIndexHandler(SimpleHTTPRequestHandler):
+    """Serve the fixture index without writing access logs."""
+
+    def log_message(self, format: str, *args: object) -> None:  # noqa: A002
+        pass
+
+
+@contextmanager
+def _serve_build_index(root: Path) -> Iterator[str]:
+    """Yield the base URL of a local HTTP index."""
+    root.mkdir(exist_ok=True)
+    server = ThreadingHTTPServer(
+        ("127.0.0.1", 0), partial(_BuildIndexHandler, directory=str(root))
+    )
+    thread = threading.Thread(
+        target=partial(server.serve_forever, poll_interval=0.01), daemon=True
+    )
+    thread.start()
+    try:
+        yield f"http://127.0.0.1:{server.server_port}/"
+    finally:
+        server.shutdown()
+        server.server_close()
+        thread.join(timeout=5)
+
+
+class _BuildTransport:
+    """Record requests and enforce one close on the loop that used the client."""
+
+    def __init__(self, transport: AsyncHttpTransport) -> None:
+        self.transport = transport
+        self.requests: list[str] = []
+        self.loop: asyncio.AbstractEventLoop | None = None
+        self.closed = False
+
+    async def get(
+        self, url: str, *, headers: dict[str, str] | None = None
+    ) -> HttpResponse:
+        assert not self.closed
+        loop = asyncio.get_running_loop()
+        assert self.loop is None or self.loop is loop
+        self.loop = loop
+        self.requests.append(url)
+        return await self.transport.get(url, headers=headers)
+
+    async def aclose(self) -> None:
+        assert not self.closed
+        assert self.loop is None or self.loop is asyncio.get_running_loop()
+        self.closed = True
+        await self.transport.aclose()
+
+
+class _BuildTransportFactory:
+    """Create independently owned clients and retain their request records."""
+
+    def __init__(self, make: Callable[[], AsyncHttpTransport]) -> None:
+        self.make = make
+        self.clients: list[_BuildTransport] = []
+
+    def __call__(self) -> _BuildTransport:
+        client = _BuildTransport(self.make())
+        self.clients.append(client)
+        return client
+
+
+@pytest.mark.parametrize(
+    "make_transport", [Urllib3AsyncTransport, HttpxAsyncTransport, Httpx2AsyncTransport]
+)
+def test_build_backend_uses_selected_transport_for_nested_and_extra_requirements(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    make_transport: Callable[[], AsyncHttpTransport],
+) -> None:
+    """A project build uses the selected clients for nested and extra requirements."""
+    monkeypatch.setattr(env_mod, "extract_sdist_archive", _unpack_fixture_sdist)
+    index = tmp_path / "index"
+    _make_local_index(index, "buildstub", "1.0", sdist_only=True, requires=("basedep",))
+    _make_local_index(index, "basedep", "1.0")
+    _make_local_index(index, "extradep", "1.0")
+    _make_local_index(index, "click", "8.0")
+    source = tmp_path / "source"
+    source.mkdir()
+    _write_fake_backend_project(source)
+    project = source / "pyproject.toml"
+    project.write_text(
+        project.read_text().replace("requires = []", 'requires = ["buildstub"]')
+    )
+    backend = source / "nab_test_backend.py"
+    backend.write_text(
+        backend.read_text().replace("    return []", '    return ["extradep"]')
+    )
+    project = tmp_path / "pyproject.toml"
+    project.write_text(
+        '[project]\nname = "root"\nversion = "1.0"\ndependencies = ["fake-pkg"]\n'
+    )
+    factory = _BuildTransportFactory(make_transport)
+
+    with _serve_build_index(index) as url:
+        result = resolve_for_targets(
+            project,
+            make_transport(),
+            targets=(ResolveTarget.for_host(),),
+            inputs=ResolveInputs(
+                indexes=(IndexConfig("fixture", url),),
+                build_requires_depth=1,
+                local_sources=(LocalSource("fake-pkg", str(source)),),
+            ),
+            build_transport_factory=factory,
+        )
+
+    result.raise_for_failure()
+    assert set(result.target_results[0].pins) == {"fake-pkg", "click"}
+    # Each resolve/download pair belongs to the initial env, its nested build,
+    # the hook's extra requirements, or the nested build repeated for that install.
+    assert len(factory.clients) == 8
+    assert all(client.closed for client in factory.clients)
+    for resolve, download in zip(
+        factory.clients[::2], factory.clients[1::2], strict=True
+    ):
+        assert resolve.requests
+        assert download.requests
+        assert resolve.loop is not download.loop
+        assert all(
+            request.endswith((".whl", ".tar.gz")) for request in download.requests
+        )
+    requests = [request for client in factory.clients for request in client.requests]
+    assert any(
+        request.endswith("/basedep-1.0-py3-none-any.whl") for request in requests
+    )
+    assert any(
+        request.endswith("/extradep-1.0-py3-none-any.whl") for request in requests
+    )
+
+
+def test_explicit_build_transport_factory_reaches_nested_builds(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(env_mod, "extract_sdist_archive", _unpack_fixture_sdist)
+    index = tmp_path / "index"
+    _make_local_index(index, "buildstub", "1.0", sdist_only=True, requires=("basedep",))
+    _make_local_index(index, "basedep", "1.0")
+    factory = _BuildTransportFactory(Httpx2AsyncTransport)
+
+    with _serve_build_index(index) as url:
+        config = ResolveInputs(
+            indexes=(IndexConfig("fixture", url),),
+            build_requires_depth=1,
+        )
+        with NabBuildEnv(
+            requires=["buildstub"], config=config, transport_factory=factory
+        ):
+            pass
+
+    assert len(factory.clients) == 4
+    assert all(client.closed for client in factory.clients)
+
+
+@pytest.mark.parametrize("failure", ["resolve", "download"])
+def test_build_transport_closes_after_failure(tmp_path: Path, failure: str) -> None:
+    index = tmp_path / "index"
+    factory = _BuildTransportFactory(Httpx2AsyncTransport)
+    if failure == "download":
+        _make_local_index(index, "basedep", "1.0")
+        wheel = index / "basedep" / "basedep-1.0-py3-none-any.whl"
+        with zipfile.ZipFile(wheel) as archive:
+            metadata = archive.read("basedep-1.0.dist-info/METADATA")
+        wheel.with_name(wheel.name + ".metadata").write_bytes(metadata)
+        page = wheel.parent / "index.html"
+        page.write_text(
+            page.read_text().replace(
+                f'<a href="{wheel.name}',
+                f'<a data-core-metadata="true" href="{wheel.name}',
+            )
+        )
+        wheel.unlink()
+
+    with _serve_build_index(index) as url:
+        config = ResolveInputs(indexes=(IndexConfig("fixture", url),))
+        with (
+            pytest.raises((ResolutionError, BuildEnvError)),
+            NabBuildEnv(requires=["basedep"], config=config, transport_factory=factory),
+        ):
+            pytest.fail("the missing requirement or wheel must fail the build")
+
+    assert len(factory.clients) == (1 if failure == "resolve" else 2)
+    assert all(client.closed for client in factory.clients)
+
+
+def test_offline_build_never_creates_a_transport(tmp_path: Path) -> None:
+    factory = _BuildTransportFactory(Httpx2AsyncTransport)
+    config = ResolveInputs()
+    with (
+        pytest.raises(BuildEnvError, match="offline"),
+        NabBuildEnv(
+            requires=["basedep"], config=config, offline=True, transport_factory=factory
+        ),
+    ):
+        pytest.fail("the unavailable build requirement must fail offline")
+    assert factory.clients == []
