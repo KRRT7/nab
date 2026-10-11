@@ -821,10 +821,13 @@ def _version_neighbors(text: str) -> list[str]:
 
     out.extend(_suffix_neighbors(version, release_str, pre_part))
 
-    for suffix in (".dev0", "a0", ".post0", ".1", "+l"):
-        candidate = f"{base}{suffix}"
-        if _strict_version(candidate):
-            out.append(candidate)
+    # A suffix after a local label stays local; public neighbours need their own stem.
+    stems = (base, version.public) if version.local is not None else (base,)
+    for stem in stems:
+        for suffix in (".dev0", "a0", ".post0", ".1", "+l"):
+            candidate = f"{stem}{suffix}"
+            if _strict_version(candidate):
+                out.append(candidate)
     return out
 
 

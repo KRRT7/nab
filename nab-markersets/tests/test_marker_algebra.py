@@ -189,6 +189,27 @@ def test_local_literal_admits_its_public_release() -> None:
     ).evaluate(env)
 
 
+@pytest.mark.parametrize(
+    "full_version", ["3.10.0.dev0", "3.10.0a1", "3.10.0b1", "3.10.0rc1"]
+)
+def test_local_literal_admits_public_prereleases(full_version: str) -> None:
+    minor = ms('"3.10+local" == python_version')
+    full = ms('"3.10+local" > python_full_version')
+    both = minor & full
+    shared = {"python_version": "3.10", "python_full_version": full_version}
+    text = '"3.10+local" == python_version and "3.10+local" > python_full_version'
+
+    assert Marker(text).evaluate(shared)
+    assert both.evaluate(shared)
+
+    assert not minor.is_disjoint(full)
+    assert not both.is_empty()
+
+    witness = both.witness()
+    assert witness is not None
+    assert Marker(text).evaluate(witness)
+
+
 def test_local_literal_padded_twin_refutes_subset() -> None:
     # ==3.10+abc admits the padded 3.10.0+abc, where the invalid-specifier
     # <= clause degrades to string equality and fails.
