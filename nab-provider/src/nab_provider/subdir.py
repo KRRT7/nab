@@ -1,10 +1,4 @@
-"""Containment check for a source-tree subdirectory.
-
-The project root inside a materialised source (an extracted archive, a
-VCS clone, or a local directory) is selected with ``root / subdirectory``.
-An absolute path, a ``..`` component, or a Windows drive letter would make
-that join land outside the tree.
-"""
+"""Lexical containment checks for source-tree subdirectories."""
 
 from __future__ import annotations
 
@@ -15,28 +9,18 @@ __all__ = ["subdirectory_escapes"]
 
 
 def subdirectory_escapes(subdirectory: str) -> bool:
-    r"""Return True if ``subdirectory`` would resolve outside the source tree.
+    r"""Return True if a subdirectory escapes under either path convention.
 
-    The materialisation join is native, so the value must stay contained
-    under both separator conventions. ntpath catches Windows escapes such
-    as drive letters and backslash separators. posixpath catches an escape
-    a literal backslash hides from ntpath: ``c\d`` is one segment on POSIX
-    but two under ntpath, which would then absorb a trailing ``..``.
+    Materialisation uses native paths, so both conventions must be checked.
+    A literal backslash in ``c\d/../..`` hides a POSIX escape from ntpath.
     """
     if not subdirectory:
         return False
 
-    for normpath, join, commonpath in (
-        (ntpath.normpath, ntpath.join, ntpath.commonpath),
-        (posixpath.normpath, posixpath.join, posixpath.commonpath),
-    ):
-        root = normpath("/source-root")
-        resolved = normpath(join(root, subdirectory))
-        try:
-            escapes = commonpath((root, resolved)) != root
-        except ValueError:
-            # Different drives (e.g. a ``C:\\`` subdirectory) have no common path.
+    for path in (ntpath, posixpath):
+        normalized = path.normpath(subdirectory)
+        if path.splitdrive(subdirectory)[0] or normalized.startswith(path.sep):
             return True
-        if escapes:
+        if normalized == ".." or normalized.startswith(f"..{path.sep}"):
             return True
     return False

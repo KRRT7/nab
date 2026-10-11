@@ -151,6 +151,15 @@ class TestVcsRequestParse:
                 "git+https://ex.com/r.git@" + "a" * 40 + "#subdirectory=../../../../etc"
             )
 
+    @pytest.mark.parametrize(
+        "subdirectory", ["../source-root/demo", r"..\source-root\demo"]
+    )
+    def test_source_root_named_parent_escape_rejected(self, subdirectory: str) -> None:
+        with pytest.raises(VcsCloneError, match="unsafe VCS subdirectory"):
+            VcsRequest.parse(
+                "git+https://ex.com/r.git@" + "a" * 40 + f"#subdirectory={subdirectory}"
+            )
+
     def test_absolute_subdirectory_rejected(self) -> None:
         with pytest.raises(VcsCloneError, match="unsafe VCS subdirectory"):
             VcsRequest.parse(
