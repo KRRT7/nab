@@ -1073,37 +1073,64 @@ class TestResolvePyproject:
             "bar": "1.0",
         }
 
-    @patch("nab_project._resolve.engine.build_target_lock")
-    @patch("nab_project._resolve.engine.Resolver")
-    @patch("nab_project._resolve.engine.Provider")
-    @patch("nab_project.resolve.FetchCoordinator")
-    def test_extras_create_proxy_packages(
-        self,
-        mock_coord_cls: MagicMock,
-        mock_provider_cls: MagicMock,
-        mock_resolver_cls: MagicMock,
-        mock_build_lock: MagicMock,
-        tmp_path: Path,
-    ) -> None:
-        """Requirements with extras create proxy package entries."""
+    def test_extras_create_proxy_packages(self, tmp_path: Path) -> None:
+        """Extra proxy roots retain base and selected-extra dependencies."""
         pyproject = tmp_path / "pyproject.toml"
         pyproject.write_text(
             '[project]\ndependencies = ["requests[security]>=2.0"]\n',
         )
 
-        mock_coord_cls.return_value.__enter__ = lambda s: s
-        mock_coord_cls.return_value.__exit__ = MagicMock(return_value=False)
-        mock_resolver = mock_resolver_cls.return_value
-        mock_resolver.resolve.return_value = {"requests": V("2.0")}
+        coordinator = graph_port(
+            (
+                (
+                    "requests",
+                    "2.0",
+                    False,
+                    (
+                        "base-dep>=1",
+                        'extra-dep>=1; extra == "security"',
+                        'other-dep; extra == "other"',
+                    ),
+                ),
+                ("base-dep", "1.0", False, ()),
+                ("extra-dep", "1.0", False, ()),
+                ("other-dep", "1.0", False, ()),
+            ),
+            {("requests", "2.0", False): ("security", "other")},
+        )
+        with (
+            patch(
+                "nab_project.resolve.FetchCoordinator",
+                return_value=nullcontext(coordinator),
+            ),
+            patch.object(
+                Resolver, "resolve", autospec=True, side_effect=Resolver.resolve
+            ) as solver_resolve,
+            patch(
+                "nab_project._resolve.engine.Provider", wraps=Provider
+            ) as provider_cls,
+        ):
+            result = _resolved(pyproject, _FAKE_TRANSPORT, python_version="3.12.0")
 
-        _resolved(pyproject, _FAKE_TRANSPORT, python_version="3.12.0")
-
-        requirements = _root_ranges(mock_resolver)
+        requirements = {root.package for root in solver_resolve.call_args.args[1]}
         assert "requests" in requirements
         assert "requests[security]" in requirements
-        # root_extras passed to provider
-        provider_kwargs = mock_provider_cls.call_args.kwargs
+        provider_kwargs = provider_cls.call_args.kwargs
         assert ("requests", "security") in provider_kwargs["root_extras"]
+
+        assert _pins(result) == {
+            "requests": V("2.0"),
+            "base-dep": V("1.0"),
+            "extra-dep": V("1.0"),
+        }
+
+        lock = result.target_results[0].lock
+        assert lock is not None
+        assert {name: pin.version for name, pin in lock.pins.items()} == {
+            "requests": "2.0",
+            "base-dep": "1.0",
+            "extra-dep": "1.0",
+        }
 
     @patch("nab_project._resolve.engine.build_target_lock")
     @patch("nab_project._resolve.engine.Resolver")
