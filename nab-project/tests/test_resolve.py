@@ -237,16 +237,6 @@ def _build_constraints(
     ).ranges
 
 
-def _constraints_pyproject(tmp_path: Path, entries: str) -> Path:
-    """A minimal project whose ``[tool.nab].constraints`` holds ``entries``."""
-    pyproject = tmp_path / "pyproject.toml"
-    pyproject.write_text(
-        '[project]\nname = "x"\nversion = "0"\ndependencies = []\n'
-        f"[tool.nab]\nconstraints = [{entries}]\n"
-    )
-    return pyproject
-
-
 def _malformed_group_pyproject(tmp_path: Path) -> Path:
     """A project with conflicting ``cpu`` and ``gpu`` extras, plus a
     ``docs`` group whose value is an integer instead of a list."""
