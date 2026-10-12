@@ -27,8 +27,6 @@ _FLAG_SPELLINGS = _TESTS / "data" / "lockfile_flag_spellings.txt"
 
 _NAMES = [name for name, _module, _function in COMMANDS]
 
-_MINIMAL_PROJECT = '[project]\nname = "x"\nversion = "0"\ndependencies = []\n'
-
 _ROOT_ROWS = [row for row in ALL if row.is_global]
 
 
