@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import gzip
+import ssl
 from collections.abc import Callable
 from typing import Any
 
@@ -11,6 +12,7 @@ import httpx2
 import pytest
 import truststore
 
+from nab_index.client import AsyncSimpleClient
 from nab_index.httpx2_async_transport import Httpx2AsyncTransport
 from nab_index.retry_limits import MAX_REDIRECTS, MAX_RETRIES
 from nab_index.transport import IDENTITY_HEADERS, USER_AGENT, HttpError
@@ -172,6 +174,73 @@ def test_retry_failures(
     asyncio.run(run())
     assert calls == (2 if recover else MAX_RETRIES + 1)
     assert len(slept) == calls - 1
+
+
+@pytest.mark.parametrize("attribute", ["__cause__", "__context__"])
+def test_certificate_failure_is_not_retried(
+    connect: Connect, slept: list[float], attribute: str
+) -> None:
+    certificate = ssl.SSLCertVerificationError("untrusted issuer")
+    error = httpx2.ConnectError("certificate rejected")
+    setattr(error, attribute, certificate)
+    requests: list[httpx2.Request] = []
+
+    def handle(request: httpx2.Request) -> httpx2.Response:
+        requests.append(request)
+        raise error
+
+    client = AsyncSimpleClient(connect(handle))
+
+    async def run() -> None:
+        try:
+            with pytest.raises(HttpError, match="certificate rejected") as caught:
+                await client.get_metadata_text("https://example.com/demo.whl.metadata")
+            assert caught.value.__cause__ is error
+            assert getattr(caught.value.__cause__, attribute) is certificate
+        finally:
+            await client.aclose()
+
+    asyncio.run(run())
+    assert len(requests) == 1
+    assert slept == []
+
+
+@pytest.mark.parametrize("recover", [True, False])
+def test_ordinary_tls_failure_is_retried(
+    connect: Connect, slept: list[float], recover: bool
+) -> None:
+    metadata = "Metadata-Version: 2.1\nName: demo\nVersion: 1.0\n"
+    errors: list[httpx2.ConnectError] = []
+
+    def handle(request: httpx2.Request) -> httpx2.Response:
+        if recover and len(errors) == 1:
+            return _response(body=metadata.encode())
+        error = httpx2.ConnectError("connection lost", request=request)
+        errors.append(error)
+        raise error from ssl.SSLError("TLS EOF")
+
+    client = AsyncSimpleClient(connect(handle))
+
+    async def run() -> None:
+        try:
+            if recover:
+                text = await client.get_metadata_text(
+                    "https://example.com/demo.whl.metadata"
+                )
+                assert text == metadata
+            else:
+                with pytest.raises(HttpError, match="connection lost") as caught:
+                    await client.get_metadata_text(
+                        "https://example.com/demo.whl.metadata"
+                    )
+                assert caught.value.__cause__ is errors[-1]
+                assert isinstance(caught.value.__cause__.__cause__, ssl.SSLError)
+        finally:
+            await client.aclose()
+
+    asyncio.run(run())
+    assert len(errors) == (1 if recover else MAX_RETRIES + 1)
+    assert len(slept) == (1 if recover else MAX_RETRIES)
 
 
 @pytest.mark.parametrize(

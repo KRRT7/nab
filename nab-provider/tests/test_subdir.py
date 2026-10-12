@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import pytest
+
 from nab_provider.subdir import subdirectory_escapes
 
 
@@ -14,6 +16,25 @@ class TestSubdirectoryEscapes:
 
     def test_parent_component_escapes(self) -> None:
         assert subdirectory_escapes("../outside") is True
+
+    @pytest.mark.parametrize(
+        "subdirectory",
+        [
+            "../source-root/demo",
+            r"..\source-root\demo",
+            "nested/../../source-root/demo",
+            "/source-root/demo",
+            r"\source-root\demo",
+        ],
+    )
+    def test_source_root_named_path_escapes(self, subdirectory: str) -> None:
+        assert subdirectory_escapes(subdirectory) is True
+
+    @pytest.mark.parametrize(
+        "subdirectory", [".", "nested/..", "nested/../nested", r"nested\..\nested"]
+    )
+    def test_contained_dot_components_allowed(self, subdirectory: str) -> None:
+        assert subdirectory_escapes(subdirectory) is False
 
     def test_absolute_path_escapes(self) -> None:
         assert subdirectory_escapes("/etc") is True

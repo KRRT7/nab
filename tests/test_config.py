@@ -3460,6 +3460,21 @@ class TestLocalSources:
         with pytest.raises(ConfigError, match="escapes the source tree"):
             read_pyproject_config(path)
 
+    @pytest.mark.parametrize(
+        "subdirectory", ["../source-root/demo", r"..\source-root\demo"]
+    )
+    def test_subdirectory_source_root_named_parent_escape_rejected(
+        self, tmp_path: Path, subdirectory: str
+    ) -> None:
+        path = write(
+            tmp_path,
+            "[[tool.nab.local-sources]]\n"
+            'name = "x"\npath = "../x"\n'
+            f"subdirectory = '{subdirectory}'\n",
+        )
+        with pytest.raises(ConfigError, match="escapes the source tree"):
+            read_pyproject_config(path)
+
     def test_path_through_a_symlink_loop_parses(self, tmp_path: Path) -> None:
         """A loop is a bad tree, not a bad config, so parsing accepts it."""
         (tmp_path / "loop").symlink_to("loop")

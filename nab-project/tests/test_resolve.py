@@ -268,6 +268,41 @@ def conflict_fetch_port() -> Iterator[FakeFetchPort]:
         yield coordinator
 
 
+def test_umbrella_extra_retains_dependency_on_prerelease_python(tmp_path: Path) -> None:
+    path = tmp_path / "pyproject.toml"
+    path.write_text(
+        "[project]\n"
+        'name = "project-demo"\n'
+        'version = "1.0"\n'
+        "dependencies = []\n"
+        "[project.optional-dependencies]\n"
+        'all = [\'project-demo[leaf]; "3.10+local" == python_version and '
+        '"3.10+local" > python_full_version\']\n'
+        "leaf = ['demo==1.0']\n",
+        encoding="utf-8",
+    )
+    target = ResolveTarget.for_declared(
+        python_version="3.10",
+        python_full_version="3.10.0.dev0",
+        spec=PlatformSpec("linux_x86_64"),
+    )
+    coordinator = make_coordinator(
+        listings={"demo": _index_wheels("demo", "1.0")}, auto_metadata=True
+    )
+    with patch(
+        "nab_project.resolve.FetchCoordinator", return_value=nullcontext(coordinator)
+    ):
+        result = _resolved(path, extras=("all",), targets=(target,))
+
+    assert _pins(result) == {"demo": V("1.0")}
+
+    lock = build_pylock(build_lock_input(result, extras=("all",)))
+    selected = lock.select(
+        environment=target.marker_env, extras={"all"}, dependency_groups=()
+    )
+    assert {str(pkg.name): str(pkg.version) for pkg, _ in selected} == {"demo": "1.0"}
+
+
 class TestSpecificModeConflictValidation:
     """Conflict handling in specific mode: direct co-selection forks, an
     umbrella that reaches two members without selecting either fails fast."""

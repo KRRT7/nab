@@ -97,7 +97,9 @@ class ProjectPageParser(HTMLParser):
             if self.base_href is None:
                 for name, value in attrs:
                     if name == "href":
-                        self.base_href = value
+                        self.base_href = (
+                            None if value is None else value.strip(_HTML_WHITESPACE)
+                        )
                         break
             return
 
