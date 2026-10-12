@@ -4698,6 +4698,44 @@ class TestPylockOutputNameValidation:
 class TestConfigErrors:
     """Errors in [tool.nab] surface as exit 1 with a clear message."""
 
+    def test_source_subdirectory_sibling_project_rejected(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        base = tmp_path / "base"
+        outside = tmp_path / "source-root" / "demo"
+        base.mkdir()
+        outside.mkdir(parents=True)
+        _make_pyproject(
+            base,
+            '[project]\nname = "demo"\nversion = "1.0"\ndependencies = []\n',
+        )
+        _make_pyproject(
+            outside,
+            '[project]\nname = "demo"\nversion = "2.0"\ndependencies = []\n',
+        )
+
+        project = tmp_path / "application"
+        project.mkdir()
+        pyproject = _make_pyproject(
+            project,
+            '[project]\nname = "application"\nversion = "0"\n'
+            'dependencies = ["demo==2.0"]\n'
+            '[tool.nab]\nbuild-policy = "never"\n'
+            '[[tool.nab.local-sources]]\nname = "demo"\npath = "../base"\n'
+            'subdirectory = "../source-root/demo"\n',
+        )
+        output = project / "pylock.toml"
+
+        _lock_cli(
+            str(pyproject), "--offline", "--no-cache", "--output", str(output), status=1
+        )
+
+        err = capsys.readouterr().err
+        assert "../source-root/demo" in err
+        assert "escapes the source tree" in err
+
+        assert not output.exists()
+
     def test_invalid_config_exits(
         self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
     ) -> None:

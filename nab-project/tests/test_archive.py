@@ -341,6 +341,15 @@ class TestArchiveRequestParse:
                 "https://ex.com/foo.tar.gz#sha256=abc&subdirectory=../../etc"
             )
 
+    @pytest.mark.parametrize(
+        "subdirectory", ["../source-root/demo", r"..\source-root\demo"]
+    )
+    def test_source_root_named_parent_escape_rejected(self, subdirectory: str) -> None:
+        with pytest.raises(ArchiveRequestError, match="unsafe archive subdirectory"):
+            ArchiveRequest.parse(
+                f"https://ex.com/foo.tar.gz#sha256=abc&subdirectory={subdirectory}"
+            )
+
     def test_absolute_subdirectory_rejected(self) -> None:
         with pytest.raises(ArchiveRequestError, match="unsafe archive subdirectory"):
             ArchiveRequest.parse(
