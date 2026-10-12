@@ -91,6 +91,7 @@ from nab_resolver.errors import (
     ResolutionTerminatedError,
 )
 from nab_resolver.ranges import Range
+from nab_resolver.resolver import Resolver
 from nab_resolver.types import Incompatibility, IncompatibilityCause, Term
 
 if TYPE_CHECKING:
@@ -1024,44 +1025,53 @@ class TestResolvePyproject:
 
         assert _pins(result) == {}
 
-    @patch("nab_project._resolve.engine.build_target_lock")
-    @patch("nab_project._resolve.engine.Resolver")
-    @patch("nab_project._resolve.engine.Provider")
-    @patch("nab_project.resolve.FetchCoordinator")
-    def test_passes_constraints_to_resolver(
-        self,
-        mock_coord_cls: MagicMock,
-        mock_provider_cls: MagicMock,
-        mock_resolver_cls: MagicMock,
-        mock_build_lock: MagicMock,
-        tmp_path: Path,
-    ) -> None:
-        """Constraints from [tool.nab] are passed to resolver.resolve()."""
+    def test_passes_constraints_to_resolver(self, tmp_path: Path) -> None:
+        """Caller constraints narrow dependencies without adding unused packages."""
         pyproject = tmp_path / "pyproject.toml"
         pyproject.write_text(
             '[project]\ndependencies = ["foo>=1.0"]\n'
             '[tool.nab]\nconstraints = ["bar<2.0", "skip===custom"]\n',
         )
 
-        mock_coord_cls.return_value.__enter__ = lambda s: s
-        mock_coord_cls.return_value.__exit__ = MagicMock(return_value=False)
-        mock_resolver = mock_resolver_cls.return_value
-        mock_resolver.resolve.return_value = {"foo": V("2.0")}
-
-        _resolved(
-            pyproject,
-            _FAKE_TRANSPORT,
-            python_version="3.12.0",
-            inputs=ResolveInputs(constraints=("bar<2.0", "skip===custom")),
+        coordinator = graph_port(
+            (
+                ("foo", "2.0", False, ("bar>=1.0",)),
+                ("bar", "1.0", False, ()),
+                ("bar", "2.0", False, ()),
+            )
         )
+        with (
+            patch(
+                "nab_project.resolve.FetchCoordinator",
+                return_value=nullcontext(coordinator),
+            ),
+            patch.object(
+                Resolver, "resolve", autospec=True, side_effect=Resolver.resolve
+            ) as solver_resolve,
+        ):
+            result = _resolved(
+                pyproject,
+                _FAKE_TRANSPORT,
+                python_version="3.12.0",
+                inputs=ResolveInputs(constraints=("bar<2.0", "skip===custom")),
+            )
 
-        call_kwargs = mock_resolver.resolve.call_args
+        call_kwargs = solver_resolve.call_args
         assert "constraints" in call_kwargs.kwargs
         constraints = call_kwargs.kwargs["constraints"]
         assert "bar" in constraints
         assert "skip" in constraints
         assert "custom" in constraints["skip"]
         assert V("1.0") not in constraints["skip"]
+
+        assert _pins(result) == {"foo": V("2.0"), "bar": V("1.0")}
+
+        lock = result.target_results[0].lock
+        assert lock is not None
+        assert {name: pin.version for name, pin in lock.pins.items()} == {
+            "foo": "2.0",
+            "bar": "1.0",
+        }
 
     @patch("nab_project._resolve.engine.build_target_lock")
     @patch("nab_project._resolve.engine.Resolver")
@@ -1290,37 +1300,45 @@ class TestResolvePyproject:
         target = mock_provider_cls.call_args.kwargs["target"]
         assert target.python_full_version == "3.12.4"
 
-    @patch("nab_project._resolve.engine.build_target_lock")
-    @patch("nab_project._resolve.engine.Resolver")
-    @patch("nab_project._resolve.engine.Provider")
-    @patch("nab_project.resolve.FetchCoordinator")
-    def test_the_constraints_reach_the_resolver(
-        self,
-        mock_coord_cls: MagicMock,
-        mock_provider_cls: MagicMock,
-        mock_resolver_cls: MagicMock,
-        mock_build_lock: MagicMock,
-        tmp_path: Path,
-    ) -> None:
-        """``inputs`` carries the constraints the search runs under."""
+    def test_the_constraints_reach_the_resolver(self, tmp_path: Path) -> None:
+        """Caller constraints apply without [tool.nab] configuration."""
         pyproject = tmp_path / "pyproject.toml"
-        # No [tool.nab] on disk, so the constraint can only be the caller's.
         pyproject.write_text('[project]\ndependencies = ["foo"]\n')
-        mock_coord_cls.return_value.__enter__ = lambda s: s
-        mock_coord_cls.return_value.__exit__ = MagicMock(return_value=False)
-        mock_resolver_cls.return_value.resolve.return_value = {}
 
-        _resolved(
-            pyproject,
-            _FAKE_TRANSPORT,
-            inputs=ResolveInputs(constraints=("urllib3<2",)),
-            python_version="3.12.0",
+        coordinator = graph_port(
+            (
+                ("foo", "2.0", False, ("urllib3>=1.0",)),
+                ("urllib3", "1.0", False, ()),
+                ("urllib3", "2.0", False, ()),
+            )
         )
+        with (
+            patch(
+                "nab_project.resolve.FetchCoordinator",
+                return_value=nullcontext(coordinator),
+            ),
+            patch.object(
+                Resolver, "resolve", autospec=True, side_effect=Resolver.resolve
+            ) as solver_resolve,
+        ):
+            result = _resolved(
+                pyproject,
+                _FAKE_TRANSPORT,
+                inputs=ResolveInputs(constraints=("urllib3<2",)),
+                python_version="3.12.0",
+            )
 
-        forwarded = mock_resolver_cls.return_value.resolve.call_args.kwargs[
-            "constraints"
-        ]
+        forwarded = solver_resolve.call_args.kwargs["constraints"]
         assert "urllib3" in forwarded
+
+        assert _pins(result) == {"foo": V("2.0"), "urllib3": V("1.0")}
+
+        lock = result.target_results[0].lock
+        assert lock is not None
+        assert {name: pin.version for name, pin in lock.pins.items()} == {
+            "foo": "2.0",
+            "urllib3": "1.0",
+        }
 
     @patch("nab_project._resolve.engine.build_target_lock")
     @patch("nab_project._resolve.engine.Resolver")
