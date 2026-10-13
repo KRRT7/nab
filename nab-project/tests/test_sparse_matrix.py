@@ -9,19 +9,19 @@ from nab_project._testing.coordinator_fake import FakeFetchPort, make_coordinato
 from nab_project.inputs import ResolveInputs
 from nab_project.lockfile import build_pylock
 from nab_project.resolve import build_lock_input, resolve_with_coordinator
-from nab_provider._vendor.packaging.pylock import PylockSelectError
+from nab_provider._vendor.packaging.pylock import PackageWheel, PylockSelectError
 from nab_provider._vendor.packaging.requirements import Requirement
 from nab_provider._vendor.packaging.tags import Tag
 from nab_provider.provider import BuildPolicy
 from nab_provider.tags import PlatformSpec
-from nab_provider.target import Matrix, ResolveTarget
+from nab_provider.target import ImplementationOverride, Matrix, ResolveTarget
 
 
-def _wheel(package: str, version: str) -> WheelFile:
-    """A universal wheel served by the in-memory index."""
+def _wheel(package: str, version: str, *, tag: str = "py3-none-any") -> WheelFile:
+    """A wheel served by the in-memory index."""
     return WheelFile(
-        filename=f"{package}-{version}-py3-none-any.whl",
-        url=f"https://example.com/{package}-{version}-py3-none-any.whl",
+        filename=f"{package}-{version}-{tag}.whl",
+        url=f"https://example.com/{package}-{version}-{tag}.whl",
         version=version,
         requires_python=None,
         has_metadata=True,
@@ -46,6 +46,13 @@ def _interpreter_graph() -> FakeFetchPort:
             'windowsdep ; sys_platform == "win32"',
         )
     }
+    return _graph(listings, requires)
+
+
+def _graph(
+    listings: dict[str, list[WheelFile]], requires: dict[str, tuple[str, ...]]
+) -> FakeFetchPort:
+    """Serve each wheel's metadata with its package's declared dependencies."""
     metadata = {}
     for name, wheels in listings.items():
         for wheel in wheels:
@@ -64,10 +71,10 @@ def _interpreter_graph() -> FakeFetchPort:
 def test_sparse_lock_selects_only_declared_interpreters(cpython_range: str) -> None:
     """Merged pins and support markers preserve the missing PyPy corners."""
     targets = Matrix(
-        python=">=3.10,<3.16",
+        python=cpython_range,
         platforms=(PlatformSpec("linux_x86_64"), PlatformSpec("windows_amd64")),
         implementations=("cpython", "pypy"),
-        implementation_python={"cpython": cpython_range, "pypy": "==3.11.*"},
+        implementation_overrides={"pypy": ImplementationOverride(python="==3.11.*")},
     ).expand()
     inputs = ResolveInputs(build_policy=BuildPolicy.NEVER)
     result = resolve_with_coordinator(
@@ -113,12 +120,16 @@ def test_sparse_lock_selects_only_declared_interpreters(cpython_range: str) -> N
 
 
 def test_sparse_lock_restricts_implementations_with_identical_pins() -> None:
-    """An implementation's Python range limits support even for identical pins."""
+    """Interpreter overrides limit support even without dependency markers."""
     targets = Matrix(
-        python=">=3.11,<3.13",
+        python="==3.12.*",
         platforms=(PlatformSpec("linux_x86_64"),),
         implementations=("cpython", "pypy"),
-        implementation_python={"cpython": "==3.12.*", "pypy": "==3.11.*"},
+        implementation_overrides={
+            "pypy": ImplementationOverride(
+                python="==3.11.*", platforms=(PlatformSpec("windows_amd64"),)
+            )
+        },
     ).expand()
     coordinator = make_coordinator(
         listings={"base": [_wheel("base", "1.0")]}, auto_metadata=True
@@ -139,10 +150,15 @@ def test_sparse_lock_restricts_implementations_with_identical_pins() -> None:
         )
         assert [str(package.name) for package, _ in selected] == ["base"]
 
-    for version, implementation in (("3.11", "cpython"), ("3.12", "pypy")):
+    for version, implementation, platform in (
+        ("3.11", "cpython", "linux_x86_64"),
+        ("3.12", "cpython", "windows_amd64"),
+        ("3.11", "pypy", "linux_x86_64"),
+        ("3.12", "pypy", "windows_amd64"),
+    ):
         undeclared = ResolveTarget.for_declared(
             python_version=version,
-            spec=PlatformSpec("linux_x86_64"),
+            spec=PlatformSpec(platform),
             implementation=implementation,
         )
         with pytest.raises(PylockSelectError, match="environments specified"):
@@ -152,3 +168,110 @@ def test_sparse_lock_restricts_implementations_with_identical_pins() -> None:
                     tags=[Tag("py3", "none", "any")],
                 )
             )
+
+
+def test_platform_override_keeps_native_wheel_eligibility() -> None:
+    """PyPy Windows and free-threaded CPython Linux select their native wheels."""
+    gil_wheel = _wheel("native", "4.0", tag="cp313-cp313-manylinux_2_17_x86_64")
+    pypy_wheel = _wheel("native", "3.0", tag="pp311-pypy311_pp73-win_amd64")
+    free_threaded_wheel = _wheel(
+        "native", "2.0", tag="cp313-cp313t-manylinux_2_17_x86_64"
+    )
+    coordinator = _graph(
+        {
+            "native": [gil_wheel, pypy_wheel, free_threaded_wheel],
+            "runtime": [_wheel("runtime", "1.0")],
+        },
+        {"native": ("runtime",)},
+    )
+    targets = Matrix(
+        python="==3.13.*",
+        platforms=(PlatformSpec("linux_x86_64", free_threaded=True),),
+        implementations=("cpython", "pypy"),
+        implementation_overrides={
+            "pypy": ImplementationOverride(
+                python="==3.11.*", platforms=(PlatformSpec("windows_amd64"),)
+            )
+        },
+    ).expand()
+    inputs = ResolveInputs(build_policy=BuildPolicy.NEVER)
+    result = resolve_with_coordinator(
+        coordinator, targets, [Requirement("native")], inputs=inputs
+    )
+
+    assert result.success
+    assert {
+        target_result.target.implementation: str(target_result.pins["native"])
+        for target_result in result.target_results
+    } == {"cpython": "2.0", "pypy": "3.0"}
+    pylock = build_pylock(build_lock_input(result, inputs=inputs))
+    pylock.validate()
+
+    for target in targets:
+        wheel = (
+            free_threaded_wheel if target.implementation == "cpython" else pypy_wheel
+        )
+        native_tag = (
+            Tag("cp313", "cp313t", "manylinux_2_17_x86_64")
+            if target.implementation == "cpython"
+            else Tag("pp311", "pypy311_pp73", "win_amd64")
+        )
+        selected = {
+            str(package.name): artifact
+            for package, artifact in pylock.select(
+                environment=target.marker_env,
+                tags=[native_tag, Tag("py3", "none", "any")],
+            )
+        }
+        assert set(selected) == {"native", "runtime"}
+        native = selected["native"]
+        assert isinstance(native, PackageWheel)
+        assert native.url == wheel.url
+
+
+def test_platform_override_replaces_libc_for_same_platform_id() -> None:
+    """Implementation-specific tag settings distinguish glibc and musl wheels."""
+    glibc_wheel = _wheel("native", "4.0", tag="py3-none-manylinux_2_17_x86_64")
+    musl_wheel = _wheel("native", "3.0", tag="py3-none-musllinux_1_2_x86_64")
+    targets = Matrix(
+        python="==3.12.*",
+        platforms=(PlatformSpec("linux_x86_64", runs_on_libc=(2, 17)),),
+        implementations=("cpython", "pypy"),
+        implementation_overrides={
+            "pypy": ImplementationOverride(
+                python="==3.11.*",
+                platforms=(
+                    PlatformSpec("linux_x86_64", libc="musl", runs_on_libc=(1, 2)),
+                ),
+            )
+        },
+    ).expand()
+    inputs = ResolveInputs(build_policy=BuildPolicy.NEVER)
+    result = resolve_with_coordinator(
+        _graph({"native": [glibc_wheel, musl_wheel]}, {}),
+        targets,
+        [Requirement("native")],
+        inputs=inputs,
+    )
+
+    assert result.success
+    assert {
+        target_result.target.implementation: str(target_result.pins["native"])
+        for target_result in result.target_results
+    } == {"cpython": "4.0", "pypy": "3.0"}
+    pylock = build_pylock(build_lock_input(result, inputs=inputs))
+    pylock.validate()
+
+    for target in targets:
+        wheel = glibc_wheel if target.implementation == "cpython" else musl_wheel
+        platform_tag = (
+            "manylinux_2_17_x86_64"
+            if target.implementation == "cpython"
+            else "musllinux_1_2_x86_64"
+        )
+        ((package, artifact),) = pylock.select(
+            environment=target.marker_env, tags=[Tag("py3", "none", platform_tag)]
+        )
+        assert str(package.name) == "native"
+        assert isinstance(artifact, PackageWheel)
+        assert artifact.url == wheel.url

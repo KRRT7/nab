@@ -690,7 +690,7 @@ def plan_targets(config: NabProjectConfig) -> tuple[ResolveTarget, ...]:
             config.requires_python,
             target,
             source=config.requires_python_source,
-            matrix=config.matrix is not None,
+            matrix=config.matrix,
         )
     return targets
 
@@ -772,7 +772,7 @@ def _check_requires_python_admits_target(
     target: ResolveTarget,
     *,
     source: str,
-    matrix: bool,
+    matrix: MatrixConfig | None,
 ) -> None:
     """Reject a ``requires-python`` declaration that excludes the resolve target.
 
@@ -785,10 +785,8 @@ def _check_requires_python_admits_target(
     :meth:`~nab_provider.target.ResolveTarget.admits_requires_python`, the
     comparison every candidate's ``Requires-Python`` takes, so it is read at
     the language minor and a micro floor like ``>= "3.11.4"`` admits a 3.11
-    target.  Which knob the error names depends on the target.  A matrix
-    declares the python axis of every target it expands, and both
-    ``--python`` and ``[tool.nab.environment]`` are themselves errors
-    alongside one, so a matrix target is moved by ``matrix.python`` instead.
+    target. The error names the shared Python setting or the implementation
+    override that selected the target.
     """
     if requires_python is None:
         return
@@ -798,11 +796,16 @@ def _check_requires_python_admits_target(
         f"{source} = {requires_python!r} excludes the resolve target"
         f" Python {target.python_version} ({target.label})."
     )
-    if matrix:
+    if matrix is not None:
+        override = (matrix.implementation_overrides or {}).get(target.implementation)
+        key = (
+            f"matrix.implementation.{target.implementation}.python"
+            if override is not None and override.python is not None
+            else "matrix.python"
+        )
         msg = (
-            f"{excludes}  [tool.nab.matrix] declares the python axis of every"
-            " target it expands: narrow matrix.python to drop the version, or"
-            " widen requires-python."
+            f"{excludes}  {key} selects this target: change {key}"
+            " to drop the version, or widen requires-python."
         )
     else:
         msg = (

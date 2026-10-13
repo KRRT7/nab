@@ -75,7 +75,6 @@ _PAGES = (
     ("implementations", "explanation/universal.md"),
     ("python-order", "explanation/universal.md"),
     ("python-patches", "explanation/universal.md"),
-    ("implementation-python", "explanation/universal.md"),
     ("python", "reference/configuration.md"),
     ("platform", "reference/configuration.md"),
     ("implementation", "reference/configuration.md"),
@@ -180,8 +179,8 @@ class TestTheDeclaredTable:
         command = [row for row in ALL if row.commands and not row.is_global]
         file_only = [row for row in ALL if not row.commands]
 
-        assert (len(root), len(command), len(file_only)) == (7, 45, 13)
-        assert len(root) + len(command) + len(file_only) == len(ALL) == 65
+        assert (len(root), len(command), len(file_only)) == (7, 44, 13)
+        assert len(root) + len(command) + len(file_only) == len(ALL) == 64
 
         keyed = [row for row in ALL if row.key]
         assert len(keyed) == 29
@@ -196,7 +195,6 @@ class TestTheDeclaredTable:
             ("implementations", "matrix"),
             ("python-order", "matrix"),
             ("python-patches", "matrix"),
-            ("implementation-python", "matrix"),
             ("python", "environment"),
             ("platform", "environment"),
             ("implementation", "environment"),

@@ -8,6 +8,7 @@ from nab_provider._vendor.packaging.markers import Marker, default_environment
 from nab_provider.tags import PlatformSpec
 from nab_provider.target import (
     KNOWN_PYTHON_MINORS,
+    ImplementationOverride,
     Matrix,
     _pythons_in_range,
     declared_range_marker,
@@ -312,8 +313,8 @@ class TestImplementationAxis:
             matrix.expand()
 
 
-class TestImplementationPython:
-    """Implementation-specific ranges restrict the shared Python axis."""
+class TestImplementationOverrides:
+    """Implementation bodies replace shared axes without changing global order."""
 
     @pytest.mark.parametrize(
         ("python_order", "expected"),
@@ -354,7 +355,7 @@ class TestImplementationPython:
             platforms=(PlatformSpec("macos_arm64"), PlatformSpec("linux_x86_64")),
             python_order=python_order,
             implementations=("pypy", "cpython"),
-            implementation_python={"pypy": "==3.11"},
+            implementation_overrides={"pypy": ImplementationOverride(python="==3.11")},
         )
         targets = matrix.expand()
         assert [target.label for target in targets] == expected
@@ -372,14 +373,20 @@ class TestImplementationPython:
             for target in targets
         )
 
-    def test_restriction_cannot_widen_shared_range(self) -> None:
+    def test_python_override_replaces_shared_range(self) -> None:
         matrix = Matrix(
             python=">=3.10,<3.13",
             platforms=(PlatformSpec("linux_x86_64"),),
             implementations=("pypy",),
-            implementation_python={"pypy": ">=3.9,<3.12"},
+            implementation_overrides={
+                "pypy": ImplementationOverride(python=">=3.9,<3.12")
+            },
         )
-        assert [target.python_version for target in matrix.expand()] == ["3.10", "3.11"]
+        assert [target.python_version for target in matrix.expand()] == [
+            "3.9",
+            "3.10",
+            "3.11",
+        ]
 
     def test_explicit_empty_mapping_preserves_default_targets(self) -> None:
         default = Matrix(
@@ -389,7 +396,7 @@ class TestImplementationPython:
         empty = Matrix(
             python=">=3.11,<3.13",
             platforms=(PlatformSpec("linux_x86_64"),),
-            implementation_python={},
+            implementation_overrides={},
         ).expand()
         assert empty == default
         assert all(not target.declares_implementation for target in empty)
@@ -398,7 +405,7 @@ class TestImplementationPython:
         matrix = Matrix(
             python="==3.12",
             platforms=(PlatformSpec("linux_x86_64"),),
-            implementation_python={"pypy": "==4.0"},
+            implementation_overrides={"pypy": ImplementationOverride(python="==4.0")},
         )
         (target,) = matrix.expand()
         assert target.python_version == "3.12"
@@ -409,9 +416,11 @@ class TestImplementationPython:
         matrix = Matrix(
             python="==3.12",
             platforms=(PlatformSpec("linux_x86_64"),),
-            implementation_python={"jython": "==3.12"},
+            implementation_overrides={
+                "jython": ImplementationOverride(python="==3.12")
+            },
         )
-        with pytest.raises(ValueError, match="Unknown implementation_python"):
+        with pytest.raises(ValueError, match="Unknown implementation_overrides"):
             matrix.expand()
 
     @pytest.mark.parametrize("implementation", ["cpython", "pypy"])
@@ -421,20 +430,23 @@ class TestImplementationPython:
         matrix = Matrix(
             python="==3.12",
             platforms=(PlatformSpec("linux_x86_64"),),
-            implementation_python={implementation: "banana"},
+            implementation_overrides={
+                implementation: ImplementationOverride(python="banana")
+            },
         )
         with pytest.raises(ValueError, match="Invalid specifier"):
             matrix.expand()
 
-    @pytest.mark.parametrize("restriction", ["==4.0", "==3.10"])
-    def test_empty_selected_range_is_rejected(self, restriction: str) -> None:
+    def test_empty_selected_range_is_rejected(self) -> None:
         matrix = Matrix(
             python=">=3.11,<3.13",
             platforms=(PlatformSpec("linux_x86_64"),),
             implementations=("cpython", "pypy"),
-            implementation_python={"pypy": restriction},
+            implementation_overrides={"pypy": ImplementationOverride(python="==4.0")},
         )
-        with pytest.raises(ValueError, match=r"implementation_python\['pypy'\]"):
+        with pytest.raises(
+            ValueError, match="No known Python versions match implementation 'pypy'"
+        ):
             matrix.expand()
 
     def test_patch_pin_applies_to_each_selected_implementation(self) -> None:
@@ -442,7 +454,7 @@ class TestImplementationPython:
             python=">=3.11,<3.13",
             platforms=(PlatformSpec("linux_x86_64"),),
             implementations=("cpython", "pypy"),
-            implementation_python={"pypy": "==3.11"},
+            implementation_overrides={"pypy": ImplementationOverride(python="==3.11")},
             python_patches={"3.11": "3.11.4"},
         )
         targets = matrix.expand()
@@ -459,7 +471,9 @@ class TestImplementationPython:
         matrix = Matrix(
             python=">=3.12,<3.15",
             platforms=(PlatformSpec("linux_x86_64", free_threaded=True),),
-            implementation_python={"cpython": ">=3.13"},
+            implementation_overrides={
+                "cpython": ImplementationOverride(python=">=3.13,<3.15")
+            },
         )
         assert [target.python_version for target in matrix.expand()] == ["3.13", "3.14"]
 
@@ -467,7 +481,9 @@ class TestImplementationPython:
         matrix = Matrix(
             python=">=3.12,<3.15",
             platforms=(PlatformSpec("linux_x86_64", free_threaded=True),),
-            implementation_python={"cpython": "==3.12"},
+            implementation_overrides={
+                "cpython": ImplementationOverride(python="==3.12")
+            },
         )
         with pytest.raises(
             ValueError, match="free-threaded platform needs CPython 3.13"
@@ -479,12 +495,240 @@ class TestImplementationPython:
             python=">=3.13,<3.15",
             platforms=(PlatformSpec("linux_x86_64", free_threaded=True),),
             implementations=("cpython", "pypy"),
-            implementation_python={"pypy": "==3.13"},
+            implementation_overrides={"pypy": ImplementationOverride(python="==3.13")},
         )
         with pytest.raises(
             ValueError, match="free-threaded platform needs CPython, not"
         ):
             matrix.expand()
+
+    @pytest.mark.parametrize(
+        ("python_order", "expected"),
+        [
+            (
+                "asc",
+                [
+                    "pp311-macos_arm64",
+                    "pp311-windows_amd64",
+                    "py312-linux_x86_64",
+                    "py312-macos_arm64",
+                ],
+            ),
+            (
+                "desc",
+                [
+                    "py312-linux_x86_64",
+                    "py312-macos_arm64",
+                    "pp311-macos_arm64",
+                    "pp311-windows_amd64",
+                ],
+            ),
+        ],
+    )
+    def test_union_versions_and_new_platforms_use_global_order(
+        self, python_order: str, expected: list[str]
+    ) -> None:
+        matrix = Matrix(
+            python="==3.12",
+            platforms=(PlatformSpec("linux_x86_64"), PlatformSpec("macos_arm64")),
+            python_order=python_order,
+            implementations=("pypy", "cpython"),
+            implementation_overrides={
+                "pypy": ImplementationOverride(
+                    python="==3.11",
+                    platforms=(
+                        PlatformSpec("windows_amd64"),
+                        PlatformSpec("macos_arm64"),
+                    ),
+                ),
+            },
+        )
+        assert [target.label for target in matrix.expand()] == expected
+
+    def test_new_platform_order_follows_selected_implementations(self) -> None:
+        matrix = Matrix(
+            python="==3.12",
+            platforms=(PlatformSpec("linux_x86_64"),),
+            implementations=("pypy", "cpython"),
+            implementation_overrides={
+                "cpython": ImplementationOverride(
+                    platforms=(PlatformSpec("linux_aarch64"),)
+                ),
+                "pypy": ImplementationOverride(
+                    platforms=(PlatformSpec("windows_arm64"),)
+                ),
+            },
+        )
+        assert [target.label for target in matrix.expand()] == [
+            "pp312-windows_arm64",
+            "py312-linux_aarch64",
+        ]
+
+    def test_platform_override_replaces_shared_platforms_and_knobs(self) -> None:
+        shared = PlatformSpec("linux_x86_64", runs_on_libc=(2, 34))
+        replacement = PlatformSpec("linux_x86_64", libc="musl", runs_on_libc=(1, 2))
+        matrix = Matrix(
+            python="==3.11",
+            platforms=(shared, PlatformSpec("macos_arm64")),
+            implementations=("cpython", "pypy"),
+            implementation_overrides={
+                "pypy": ImplementationOverride(platforms=(replacement,))
+            },
+        )
+        targets = matrix.expand()
+        assert [(target.platform_id, target.implementation) for target in targets] == [
+            ("linux_x86_64", "cpython"),
+            ("linux_x86_64", "pypy"),
+            ("macos_arm64", "cpython"),
+        ]
+        assert targets[0].platform_spec is shared
+        assert targets[1].platform_spec is replacement
+        cpython_platforms = {tag.platform for tag in targets[0].tags.ordered}
+        pypy_platforms = {tag.platform for tag in targets[1].tags.ordered}
+        assert "manylinux_2_34_x86_64" in cpython_platforms
+        assert "musllinux_1_2_x86_64" in pypy_platforms
+        assert not any(platform.startswith("manylinux") for platform in pypy_platforms)
+
+    def test_empty_body_inherits_both_defaults(self) -> None:
+        matrix = Matrix(
+            python=">=3.11,<3.13",
+            platforms=(PlatformSpec("linux_x86_64"),),
+            implementation_overrides={"cpython": ImplementationOverride()},
+        )
+        assert [target.label for target in matrix.expand()] == [
+            "py311-linux_x86_64",
+            "py312-linux_x86_64",
+        ]
+
+    @pytest.mark.parametrize("implementation", ["cpython", "pypy"])
+    def test_unknown_platform_rejected_even_when_unselected(
+        self, implementation: str
+    ) -> None:
+        matrix = Matrix(
+            python="==3.12",
+            platforms=(PlatformSpec("linux_x86_64"),),
+            implementation_overrides={
+                implementation: ImplementationOverride(
+                    platforms=(PlatformSpec("unknown"),)
+                )
+            },
+        )
+        with pytest.raises(ValueError, match="Unknown platform id 'unknown'"):
+            matrix.expand()
+
+    @pytest.mark.parametrize("implementation", ["cpython", "pypy"])
+    def test_duplicate_override_platform_ids_rejected(
+        self, implementation: str
+    ) -> None:
+        matrix = Matrix(
+            python="==3.12",
+            platforms=(PlatformSpec("linux_x86_64"),),
+            implementation_overrides={
+                implementation: ImplementationOverride(
+                    platforms=(
+                        PlatformSpec("linux_x86_64"),
+                        PlatformSpec("linux_x86_64", libc="musl"),
+                    )
+                )
+            },
+        )
+        with pytest.raises(ValueError, match="Duplicate platform id 'linux_x86_64'"):
+            matrix.expand()
+
+    @pytest.mark.parametrize("implementation", ["cpython", "pypy"])
+    def test_empty_platform_override_is_invalid_even_when_inactive(
+        self, implementation: str
+    ) -> None:
+        matrix = Matrix(
+            python="==3.12",
+            platforms=(PlatformSpec("linux_x86_64"),),
+            implementation_overrides={
+                implementation: ImplementationOverride(platforms=())
+            },
+        )
+        with pytest.raises(ValueError, match="must list at least one platform"):
+            matrix.expand()
+
+    def test_empty_inherited_platforms_cannot_supply_an_override(
+        self,
+    ) -> None:
+        matrix = Matrix(
+            python="==3.12",
+            platforms=(),
+            implementation_overrides={"cpython": ImplementationOverride()},
+        )
+        with pytest.raises(ValueError, match="must list at least one platform"):
+            matrix.expand()
+
+    def test_shared_duplicate_platform_ids_preserve_full_spec_order(self) -> None:
+        matrix = Matrix(
+            python="==3.11",
+            platforms=(
+                PlatformSpec("linux_x86_64"),
+                PlatformSpec("linux_x86_64", libc="musl"),
+            ),
+            implementations=("pypy", "cpython"),
+        )
+        assert [target.label for target in matrix.expand()] == [
+            "pp311-linux_x86_64",
+            "py311-linux_x86_64",
+            "pp311-linux_x86_64-musl",
+            "py311-linux_x86_64-musl",
+        ]
+
+    def test_shared_free_threaded_error_precedes_empty_python_range(self) -> None:
+        matrix = Matrix(
+            python="==4.0",
+            platforms=(PlatformSpec("linux_x86_64", free_threaded=True),),
+            implementations=("pypy",),
+        )
+        with pytest.raises(
+            ValueError, match="free-threaded platform needs CPython, not"
+        ):
+            matrix.expand()
+
+    def test_unused_platform_and_python_replacements_are_inactive(self) -> None:
+        matrix = Matrix(
+            python="==3.12",
+            platforms=(PlatformSpec("linux_x86_64"),),
+            implementation_overrides={
+                "pypy": ImplementationOverride(
+                    python="==4.0", platforms=(PlatformSpec("windows_amd64"),)
+                )
+            },
+        )
+        assert [target.label for target in matrix.expand()] == ["py312-linux_x86_64"]
+
+    def test_overridden_defaults_need_not_select_known_versions(self) -> None:
+        matrix = Matrix(
+            python="==4.0",
+            platforms=(PlatformSpec("linux_x86_64"),),
+            implementation_overrides={
+                "cpython": ImplementationOverride(python="==3.12")
+            },
+        )
+        assert [target.label for target in matrix.expand()] == ["py312-linux_x86_64"]
+
+    def test_free_threaded_and_pypy_use_independent_platform_specs(self) -> None:
+        threaded = PlatformSpec("linux_x86_64", free_threaded=True)
+        ordinary = PlatformSpec("linux_x86_64")
+        matrix = Matrix(
+            python="==3.13",
+            platforms=(threaded,),
+            implementations=("cpython", "pypy"),
+            implementation_overrides={
+                "pypy": ImplementationOverride(python="==3.11", platforms=(ordinary,))
+            },
+        )
+        pypy, cpython = matrix.expand()
+        assert pypy.python_version == "3.11"
+        assert pypy.platform_spec is ordinary
+        assert cpython.python_version == "3.13"
+        assert cpython.platform_spec is threaded
+        assert "cp313t" in {tag.abi for tag in cpython.tags.ordered}
+        assert "pypy311_pp73" in {tag.abi for tag in pypy.tags.ordered}
+        assert not Marker(cpython.environment_marker_string).evaluate(pypy.marker_env)
+        assert not Marker(pypy.environment_marker_string).evaluate(cpython.marker_env)
 
 
 class TestTargetLabels:

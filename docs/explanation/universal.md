@@ -242,18 +242,20 @@ python = ">=3.10,<3.16"
 platforms = ["linux_x86_64", "macos_arm64"]
 implementations = ["cpython", "pypy"]
 
-[tool.nab.matrix.implementation-python]
-pypy = "==3.11"
+[tool.nab.matrix.implementation.pypy]
+python = "==3.11"
 ```
 
-This declares 14 targets: six CPython minors and one PyPy minor on each platform.
-`implementation-python` intersects each implementation's range with `python`; an implementation
-without an entry uses the whole range. `implementations` still selects which interpreters to
-include. `python-order` orders all selected minors together.
+This declares 14 targets: six CPython minors and one PyPy minor on each platform. The keyed
+`implementation` table replaces `python` or `platforms` for one interpreter; omitted fields inherit
+the shared matrix values. For example, adding `platforms = ["linux_x86_64"]` to the PyPy table
+restricts PyPy to Linux while CPython keeps both platforms. An override may also add Python minors
+or platform IDs outside the shared defaults.
 
-On the command line, set the same restriction with
-`--project-matrix-implementation-python 'pypy===3.11'`. The first `=` separates `pypy` from the
-specifier `==3.11`.
+`implementations` still selects which interpreters to include. `python-order` orders all selected
+minors together. Declare implementation overrides in the project file; the shared-axis CLI flags
+change only inherited values. `--project-matrix-implementations cpython` selects only CPython for
+one run, leaving the PyPy override inactive.
 
 A PyPy target sets `platform_python_implementation = "PyPy"` / `implementation_name = "pypy"` for
 marker evaluation and accepts `ppXY-pypyXY_pp73` wheel tags instead of `cpXY`. Labels use the `pp`
@@ -276,7 +278,8 @@ which wheels the target can install.
 ### Marker variables
 
 Every PEP 508 environment variable gets a value in every target, so no marker ever evaluates against
-a missing key. Each takes its value from the axis or fixed default shown:
+a missing key. The table shows each target's effective axes, including any `implementation.<name>`
+overrides, and fixed defaults.
 
 | Marker variable                  | Set by                           | Default                                                                   |
 | -------------------------------- | -------------------------------- | ------------------------------------------------------------------------- |

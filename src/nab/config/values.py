@@ -55,7 +55,7 @@ from nab_provider.tags import (
     PlatformSpec,
     platform_kind,
 )
-from nab_provider.target import PLATFORM_MARKERS, Matrix
+from nab_provider.target import PLATFORM_MARKERS, ImplementationOverride, Matrix
 from nab_provider.vcs_admission import VcsConfig, VcsPolicy, known_vcs_schemes
 
 if TYPE_CHECKING:
@@ -147,7 +147,7 @@ class MatrixConfig(ValueType):
         "python_order",
         "python_patches",
         "implementations",
-        "implementation_python",
+        "implementation_overrides",
     )
 
     python: str
@@ -155,7 +155,7 @@ class MatrixConfig(ValueType):
     python_order: str
     python_patches: Mapping[str, str] | None
     implementations: tuple[str, ...]
-    implementation_python: Mapping[str, str] | None
+    implementation_overrides: Mapping[str, ImplementationOverride] | None
 
     def __init__(
         self,
@@ -164,7 +164,7 @@ class MatrixConfig(ValueType):
         python_order: str = "asc",
         python_patches: Mapping[str, str] | None = None,
         implementations: tuple[str, ...] = ("cpython",),
-        implementation_python: Mapping[str, str] | None = None,
+        implementation_overrides: Mapping[str, ImplementationOverride] | None = None,
     ) -> None:
         """Record the axes ``[tool.nab.matrix]`` declared."""
         self.python = python
@@ -172,7 +172,7 @@ class MatrixConfig(ValueType):
         self.python_order = python_order
         self.python_patches = python_patches
         self.implementations = implementations
-        self.implementation_python = implementation_python
+        self.implementation_overrides = implementation_overrides
 
 
 def matrix_from_config(matrix: MatrixConfig) -> Matrix:
@@ -185,7 +185,7 @@ def matrix_from_config(matrix: MatrixConfig) -> Matrix:
             dict(matrix.python_patches) if matrix.python_patches is not None else None
         ),
         implementations=matrix.implementations,
-        implementation_python=matrix.implementation_python,
+        implementation_overrides=matrix.implementation_overrides,
     )
 
 
@@ -1944,7 +1944,7 @@ _MATRIX_KEYS = frozenset(
         "python-order",
         "python-patches",
         "implementations",
-        "implementation-python",
+        "implementation",
     }
 )
 
@@ -1975,14 +1975,7 @@ def parse_matrix(
         msg = f"{where}.python must be a string PEP 440 specifier"
         raise SourceConfigError(msg)
     _validate_matrix_python(python, where, table)
-    platforms = _parse_matrix_platforms(platforms_raw, where)
-    if not platforms:
-        msg = f"{where}.platforms must list at least one platform id"
-        raise SourceConfigError(msg)
-    # One target per platform id.  A lockfile entry is selected by a PEP 508
-    # marker, which has no libc or free-threading variable, so two targets
-    # sharing an id would render the same marker.
-    _reject_duplicates(f"{where}.platforms", tuple(p.platform_id for p in platforms))
+    platforms = _parse_matrix_platform_axis(platforms_raw, where)
     python_order = _parse_string_value(
         f"{where}.python-order", value.get("python-order", "asc")
     )
@@ -1991,8 +1984,8 @@ def parse_matrix(
         raise SourceConfigError(msg)
     patches = _parse_python_patches(value.get("python-patches"), where)
     implementations = _parse_implementations(value.get("implementations"), where)
-    implementation_python = _parse_implementation_python(
-        value.get("implementation-python"), where, table
+    implementation_overrides = _parse_implementation_overrides(
+        value.get("implementation"), where, table
     )
     config = MatrixConfig(
         python=python,
@@ -2000,38 +1993,77 @@ def parse_matrix(
         python_order=python_order,
         python_patches=patches,
         implementations=implementations,
-        implementation_python=implementation_python,
+        implementation_overrides=implementation_overrides,
     )
     _validate_matrix_axes(config, where)
     return config
 
 
-def _parse_implementation_python(
+def _parse_matrix_platform_axis(value: object, where: str) -> tuple[PlatformSpec, ...]:
+    """Read a nonempty platform axis with distinguishable platform IDs."""
+    platforms = _parse_matrix_platforms(value, where)
+    if not platforms:
+        msg = f"{where}.platforms must list at least one platform id"
+        raise SourceConfigError(msg)
+    # PEP 508 cannot distinguish libc or threading variants of one platform.
+    _reject_duplicates(f"{where}.platforms", tuple(p.platform_id for p in platforms))
+    return platforms
+
+
+def _parse_implementation_overrides(
     value: object, where: str, table: str
-) -> dict[str, str] | None:
-    """Read the Python restrictions for named interpreter implementations."""
+) -> dict[str, ImplementationOverride] | None:
+    """Read keyed implementation bodies using the shared matrix axis parsers."""
     if value is None:
         return None
-    label = f"{where}.implementation-python"
+    label = f"{where}.implementation"
     if not isinstance(value, dict):
-        msg = f"{label} must be a table of PEP 440 specifiers"
+        msg = f"{label} must be a table keyed by implementation name"
         raise SourceConfigError(msg)
-    restrictions: dict[str, str] = {}
-    for implementation, spec in value.items():
+    overrides: dict[str, ImplementationOverride] = {}
+    for implementation, body in value.items():
         if implementation not in IMPLEMENTATIONS:
             msg = (
                 f"{label} has unknown implementation {implementation!r}; "
                 f"expected {list(IMPLEMENTATIONS)!r}"
             )
             raise SourceConfigError(msg)
-        if not isinstance(spec, str):
-            msg = f"{label}.{implementation} must be a string PEP 440 specifier"
+        item_label = f"{label}.{implementation}"
+        if not isinstance(body, dict):
+            msg = f"{item_label} must be a table"
             raise SourceConfigError(msg)
-        _validate_matrix_python(
-            spec, where, table, key=f"implementation-python.{implementation}"
+        overrides[implementation] = _parse_implementation_body(
+            body, item_label, where, table, implementation
         )
-        restrictions[implementation] = spec
-    return restrictions
+    return overrides
+
+
+def _parse_implementation_body(
+    body: Mapping[str, object], label: str, where: str, table: str, implementation: str
+) -> ImplementationOverride:
+    """Parse the axes one implementation replaces; omitted axes remain unset."""
+    unknown = sorted(set(body) - {"python", "platforms"})
+    if unknown:
+        msg = f"{label} has unknown keys: {unknown!r}; expected ['platforms', 'python']"
+        raise SourceConfigError(msg)
+
+    python: str | None = None
+    if "python" in body:
+        raw_python = body["python"]
+        if not isinstance(raw_python, str):
+            msg = f"{label}.python must be a string PEP 440 specifier"
+            raise SourceConfigError(msg)
+        python = raw_python
+        _validate_matrix_python(
+            python, where, table, key=f"implementation.{implementation}.python"
+        )
+
+    platforms = (
+        _parse_matrix_platform_axis(body["platforms"], label)
+        if "platforms" in body
+        else None
+    )
+    return ImplementationOverride(python=python, platforms=platforms)
 
 
 def _validate_matrix_axes(config: MatrixConfig, where: str) -> None:
