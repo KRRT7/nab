@@ -174,7 +174,7 @@ class TestTheDeclaredTable:
         optiondefs.validate(ALL)
 
     def test_the_table_is_the_three_groups_it_is_built_from(self) -> None:
-        """Keep the 64 rows split into their declared groups."""
+        """Keep the rows split into their declared groups."""
         root = [row for row in ALL if row.is_global]
         command = [row for row in ALL if row.commands and not row.is_global]
         file_only = [row for row in ALL if not row.commands]
@@ -187,7 +187,7 @@ class TestTheDeclaredTable:
         assert sum(1 for row in keyed if row.cli_flag) == 16
         assert sum(1 for row in keyed if not row.commands) == 13
 
-    def test_the_sub_rows_are_the_eight_that_spell_the_two_tables(self) -> None:
+    def test_the_sub_rows_spell_the_two_tables(self) -> None:
         """A sub-row carries no key, so only ``under`` says which one it spells."""
         assert [(row.name, row.under) for row in ALL if row.under] == [
             ("python", "matrix"),

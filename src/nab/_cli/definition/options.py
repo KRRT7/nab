@@ -390,7 +390,7 @@ class MatrixKeys(
     needs=("python", "platforms"),
     docs="explanation/universal.md",
 ):
-    """``[tool.nab.matrix]``'s five keys, as the flags that set them.
+    """Shared matrix axes, as the flags that set them.
 
     These rows carry no configuration key of their own: ``under`` names the
     one they spell, and :mod:`nab.config.subflags` assembles what they read

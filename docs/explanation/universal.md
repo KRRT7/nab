@@ -233,9 +233,32 @@ platforms = ["linux_x86_64"]
 implementations = ["cpython", "pypy"]
 ```
 
-Each implementation multiplies the target count (pythons x platforms x implementations). A PyPy
-target sets `platform_python_implementation = "PyPy"` / `implementation_name = "pypy"` for marker
-evaluation and accepts `ppXY-pypyXY_pp73` wheel tags instead of `cpXY`. Labels use the `pp`
+By default, each implementation uses the whole Python range. To target CPython 3.10 through 3.15 and
+only PyPy 3.11 on the same platforms, narrow PyPy's range:
+
+```toml
+[tool.nab.matrix]
+python = ">=3.10,<3.16"
+platforms = ["linux_x86_64", "macos_arm64"]
+implementations = ["cpython", "pypy"]
+
+[tool.nab.matrix.overrides.implementations.pypy]
+python = "==3.11"
+```
+
+This declares 14 targets: six CPython minors and one PyPy minor on each platform. The keyed
+`overrides.implementations` table replaces `python` or `platforms` for one interpreter; omitted
+fields inherit the shared matrix values. For example, adding `platforms = ["linux_x86_64"]` to the
+PyPy table restricts PyPy to Linux while CPython keeps both platforms. An override may also add
+Python minors or platform IDs outside the shared defaults.
+
+`implementations` still selects which interpreters to include. `python-order` orders all selected
+minors together. Declare implementation overrides in the project file; the shared-axis CLI flags
+change only inherited values. `--project-matrix-implementations cpython` selects only CPython for
+one run, leaving the PyPy override inactive.
+
+A PyPy target sets `platform_python_implementation = "PyPy"` / `implementation_name = "pypy"` for
+marker evaluation and accepts `ppXY-pypyXY_pp73` wheel tags instead of `cpXY`. Labels use the `pp`
 interpreter prefix (`pp311-linux_x86_64`).
 
 A CPython-only matrix leaves `implementation_name` open. A matrix with PyPy, or with more than one
@@ -255,7 +278,8 @@ which wheels the target can install.
 ### Marker variables
 
 Every PEP 508 environment variable gets a value in every target, so no marker ever evaluates against
-a missing key. Each takes its value from the axis or fixed default shown:
+a missing key. The table shows each target's effective axes, including any
+`overrides.implementations.<name>` overrides, and fixed defaults.
 
 | Marker variable                  | Set by                           | Default                                                                   |
 | -------------------------------- | -------------------------------- | ------------------------------------------------------------------------- |

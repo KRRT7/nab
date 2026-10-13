@@ -26,6 +26,7 @@ if TYPE_CHECKING:
         VcsSource,
     )
     from nab_provider.records import IndexConfig
+    from nab_provider.target import ImplementationOverride
 
 __all__ = [
     "declaring_dir",
@@ -242,11 +243,34 @@ def render_conflicts(value: Sequence[Any]) -> str:
 
 
 def render_matrix(value: Any) -> str:
-    """Render the matrix as its python axis and platform labels."""
+    """Render the shared matrix axes and any implementation override bodies."""
     if value is None:
         return "<none>"
     platforms = [p.label for p in value.platforms]
-    return f"python={value.python}, platforms={platforms}"
+    rendered = f"python={value.python}, platforms={platforms}"
+    if value.implementation_overrides:
+        overrides = {
+            "implementations": _implementation_values(value.implementation_overrides)
+        }
+        rendered += (
+            f", implementations={list(value.implementations)}, overrides={overrides}"
+        )
+    return rendered
+
+
+def _implementation_values(
+    overrides: Mapping[str, ImplementationOverride],
+) -> dict[str, dict[str, str | list[str]]]:
+    """Render only the axes each implementation explicitly overrides."""
+    bodies: dict[str, dict[str, str | list[str]]] = {}
+    for implementation, override in overrides.items():
+        body: dict[str, str | list[str]] = {}
+        if override.python is not None:
+            body["python"] = override.python
+        if override.platforms is not None:
+            body["platforms"] = [platform.label for platform in override.platforms]
+        bodies[implementation] = body
+    return bodies
 
 
 def render_package_overrides(value: Sequence[Any]) -> str:

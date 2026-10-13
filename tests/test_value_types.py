@@ -62,6 +62,7 @@ from nab_provider.policy import (
 )
 from nab_provider.records import IndexConfig
 from nab_provider.tags import PlatformSpec
+from nab_provider.target import ImplementationOverride
 from nab_provider.vcs_admission import VcsConfig, VcsPolicy
 
 
@@ -169,6 +170,7 @@ CASES = [
             "python_order": "asc",
             "python_patches": None,
             "implementations": ("cpython",),
+            "implementation_overrides": None,
         },
         {
             "python": "3.13",
@@ -176,6 +178,9 @@ CASES = [
             "python_order": "desc",
             "python_patches": {"3.12": "3.12.4"},
             "implementations": ("pypy",),
+            "implementation_overrides": {
+                "pypy": ImplementationOverride(python="==3.12")
+            },
         },
     ),
     Case(
@@ -549,6 +554,7 @@ DEFAULTS = [
             "python_order": "asc",
             "python_patches": None,
             "implementations": ("cpython",),
+            "implementation_overrides": None,
         },
     ),
     (ConflictSet, {"members": ()}, {"policy": ConflictPolicy.AT_MOST_ONE}),

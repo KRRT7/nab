@@ -1187,6 +1187,27 @@ class TestBuildCliTables:
         """A key no sub-flag set keeps whatever the file ladder resolved."""
         assert build_cli_tables(_table_params()) == {}
 
+    def test_cli_shared_axes_preserve_explicit_implementation_overrides(self) -> None:
+        overrides = {"pypy": {"python": "==3.11", "platforms": ["windows_amd64"]}}
+        table = fold_cli_table(
+            BY_KEY["matrix"],
+            _matrix_table(
+                project_matrix_python="==3.12",
+                project_matrix_platforms=("macos_arm64",),
+            ),
+            {
+                **_FILE_MATRIX,
+                "overrides": {"implementations": overrides},
+            },
+        )
+        assert table["overrides"] == {"implementations": overrides}
+        matrix = parse_matrix(table, "--project-matrix-*")
+        assert matrix.implementation_overrides is not None
+        assert matrix.implementation_overrides["pypy"].python == "==3.11"
+        assert matrix.implementation_overrides["pypy"].platforms == (
+            PlatformSpec("windows_amd64"),
+        )
+
     def test_a_flag_with_no_tokens_counts_as_unwritten(self) -> None:
         """The walk stores ``()`` for a star with no token, as for an absent one."""
         table = _overlay(

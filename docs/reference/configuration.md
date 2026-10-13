@@ -662,26 +662,54 @@ python-order = "asc"                    # "asc" | "desc"
 python-patches = { "3.11" = "3.11.4" }
 ```
 
-The matrix has three axes, and nab resolves the full cross product: the example above declares 3
-pythons, 2 platforms and 2 implementations, so it plans 12 targets.
+The matrix has three axes. Without implementation overrides, nab resolves the full cross product:
+the example above declares 3 pythons, 2 platforms and 2 implementations, so it plans 12 targets.
 
-| Key               | Default       | Meaning                                                                        |
-| ----------------- | ------------- | ------------------------------------------------------------------------------ |
-| `python`          | required      | A PEP 440 range like `>=3.11,<3.14`, expanded into one target per minor        |
-| `platforms`       | required      | The platforms to model; a bare id, or a table of the tag knobs below           |
-| `implementations` | `["cpython"]` | The interpreter implementations to model: `"cpython"`, `"pypy"`                |
-| `python-order`    | `"asc"`       | Cross-target alignment direction                                               |
-| `python-patches`  | none          | Pins a minor to one patch release, resolved whole instead of split into slices |
+| Key               | Default       | Meaning                                                                             |
+| ----------------- | ------------- | ----------------------------------------------------------------------------------- |
+| `python`          | required      | A PEP 440 range like `>=3.11,<3.14`, expanded into one target per minor             |
+| `platforms`       | required      | The platforms to model; a bare id, or a table of the tag knobs below                |
+| `implementations` | `["cpython"]` | The interpreter implementations to model: `"cpython"`, `"pypy"`                     |
+| `overrides`       | none          | Keyed bodies under `implementations.<name>`, with optional `python` and `platforms` |
+| `python-order`    | `"asc"`       | Cross-target alignment direction                                                    |
+| `python-patches`  | none          | Pins a minor to one patch release, resolved whole instead of split into slices      |
 
 `python-order` sets the alignment direction: `asc` mirrors uv's `fork-strategy=fewest`, `desc`
 mirrors `fork-strategy=requires-python`.
 
 ### Interpreter implementations
 
-`implementations` names the interpreters to model, and each entry multiplies the target count. An
-unknown implementation, a duplicate, and an empty list are each a config error. See
-[Universal resolution](../explanation/universal.md) for how the axis is modelled and what it puts on
-the lockfile markers.
+`implementations` names the interpreters to model. An unknown implementation, a duplicate, and an
+empty list are each a config error. See [Universal resolution](../explanation/universal.md) for how
+the axis is modelled and what it puts on the lockfile markers.
+
+`[tool.nab.matrix.overrides.implementations.<name>]` replaces `python` or `platforms` for one
+implementation. Omitted fields inherit the shared matrix values. For CPython 3.10 through 3.15 on
+Linux and Apple Silicon macOS, and PyPy 3.11 on Windows and musl Linux:
+
+```toml
+[tool.nab.matrix]
+python = ">=3.10,<3.16"
+platforms = ["linux_x86_64", "macos_arm64"]
+implementations = ["cpython", "pypy"]
+
+[tool.nab.matrix.overrides.implementations.pypy]
+python = "==3.11"
+platforms = [
+    "windows_amd64",
+    { id = "linux_x86_64", libc = "musl", runs-on-libc = "1.2" },
+]
+```
+
+An override uses the same minor-version specifiers and platform string/table forms as the shared
+axes. Its explicit values replace the corresponding defaults, so they may add Python minors or
+platform IDs outside those defaults. Every selected Python minor must still satisfy the project's
+`requires-python`. An empty effective Python range or platform list is a config error.
+
+Keys must name known implementations. An override does not enable its implementation, and overrides
+for disabled implementations are allowed. `python-order` orders selected minors across all
+implementations; `python-patches` pins every target of that minor to the same patch release. Shared
+platform IDs keep their matrix order, followed by new IDs in enabled-implementation order.
 
 ### Platform tag knobs
 
@@ -739,13 +767,13 @@ never enter wheel-tag selection. Left empty, every comparison against them evalu
 dependency selected by `platform_release >= "5.10"` (or on any other comparison) is dropped. A
 target that does run that kernel has to say so.
 
-`free-threaded` selects the `cp3XXt` ABI, excluding ordinary `cp3XX` and `abi3` wheels. It requires
-CPython 3.13 or newer. An older Python range or another implementation is a config error in either a
-matrix or `[tool.nab.environment]`.
+`free-threaded` selects the `cp3XXt` ABI, excluding ordinary `cp3XX` and `abi3` wheels. Every target
+using that platform setting must be CPython 3.13 or newer. An older Python or another implementation
+is a config error in either a matrix or `[tool.nab.environment]`.
 
-Each platform id may appear once. PEP 508 cannot distinguish libc families or free-threaded builds,
-so duplicate ids would render the same lock marker. Lock another libc family or ABI in a separate
-run and file.
+Each implementation's platform list may name an id once. PEP 508 cannot distinguish libc families or
+free-threaded builds for the same interpreter, so duplicate ids would render the same lock marker.
+Lock another libc family or ABI for that interpreter in a separate run and file.
 
 Each target impersonates a platform, so universal mode cannot build on the host: `build-policy`
 defaults to `never` and cannot be raised. An explicit non-`never` value (global or in any override)
@@ -772,8 +800,8 @@ is a config error. See [Build policy](build-policy.md).
 
 - `[tool.nab.matrix].python`: a range like `>=3.11,<3.14`, expanded into one target per minor
   version. Used only by universal mode. Pair with `[tool.nab.matrix].platforms`,
-  `[tool.nab.matrix].implementations` and (optionally) `[tool.nab.matrix].python-patches` to control
-  the resolve and marker shape across all targets.
+  `[tool.nab.matrix].implementations`, per-implementation overrides and (optionally)
+  `[tool.nab.matrix].python-patches` to control the resolve and marker shape across all targets.
 
 Declaring a `[tool.nab.matrix]` table while `mode` is `specific` is an error: the matrix is the list
 of targets to resolve, so leaving mode behind is almost always an oversight rather than an intent.
@@ -805,6 +833,17 @@ Each flag replaces one table key and leaves the others in place:
 ```bash
 nab lock --project-matrix-platforms macos_arm64
 ```
+
+The Python and platform flags set the shared defaults. An explicit value in
+`[tool.nab.matrix.overrides.implementations.<name>]` keeps precedence over its shared default.
+Declare these keyed override bodies in `pyproject.toml` or the project-directory `nab.toml`; they
+have no CLI flags. To select only CPython from a file declaring both implementations:
+
+```bash
+nab lock --project-matrix-implementations cpython
+```
+
+The PyPy override remains configured but is inactive for that run.
 
 Without a file matrix, `--project-matrix-python` and `--project-matrix-platforms` are required.
 Other keys use their defaults.

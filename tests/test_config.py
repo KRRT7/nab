@@ -78,7 +78,12 @@ from nab_provider.provider import (
 )
 from nab_provider.serialization import SimpleSerialization
 from nab_provider.tags import PlatformSpec
-from nab_provider.target import ResolveTarget, declared_range_marker, host_environment
+from nab_provider.target import (
+    ImplementationOverride,
+    ResolveTarget,
+    declared_range_marker,
+    host_environment,
+)
 from nab_provider.testing import pkg_override
 from nab_provider.vcs_admission import admit_vcs_url
 
@@ -1559,7 +1564,7 @@ class TestRequiresPython:
             config.requires_python,
             target,
             source=config.requires_python_source,
-            matrix=False,
+            matrix=None,
         )
 
     def test_a_python_override_rescues_a_declaration_the_host_fails(
@@ -1622,6 +1627,43 @@ class TestRequiresPython:
         assert "python-patches" not in message
         assert "--python" not in message
         assert "[tool.nab.environment]" not in message
+
+    @pytest.mark.parametrize(
+        ("shared_python", "override", "key"),
+        [
+            (
+                "==3.12",
+                'python = "==3.11"\n',
+                "matrix.overrides.implementations.pypy.python",
+            ),
+            ("==3.11", 'platforms = ["windows_amd64"]\n', "matrix.python"),
+            ("==3.11", "", "matrix.python"),
+        ],
+    )
+    def test_matrix_target_error_names_the_setting_that_can_rescue_it(
+        self, tmp_path: Path, shared_python: str, override: str, key: str
+    ) -> None:
+        """The suggested Python setting actually moves the excluded target."""
+        body = (
+            '[tool.nab]\nmode = "universal"\nrequires-python = ">=3.12"\n'
+            f'[tool.nab.matrix]\npython = "{shared_python}"\n'
+            'platforms = ["linux_x86_64"]\nimplementations = ["pypy"]\n'
+            "[tool.nab.matrix.overrides.implementations.pypy]\n"
+        )
+        path = write(tmp_path, body + override)
+        with pytest.raises(ConfigError) as exc:
+            plan_targets(read_pyproject_config(path))
+        assert f"change {key}" in str(exc.value)
+
+        if key == "matrix.python":
+            rescued = read_pyproject_config(
+                path, cli_overrides={"matrix": _cli_matrix(python="==3.12")}
+            )
+        else:
+            rescued = read_pyproject_config(
+                write(tmp_path, body + 'python = "==3.12"\n')
+            )
+        assert [target.python_version for target in plan_targets(rescued)] == ["3.12"]
 
     def test_a_micro_floor_admits_the_whole_matrix_minor(self, tmp_path: Path) -> None:
         """A micro Requires-Python floor admits the language minor it names.
@@ -4996,6 +5038,116 @@ class TestMatrix:
         body = self._matrix_body(implementations="[]")
         with pytest.raises(ConfigError, match="at least one implementation"):
             read_pyproject_config(write(tmp_path, body))
+
+    def test_implementation_python_replaces_shared_python_targets(
+        self, tmp_path: Path
+    ) -> None:
+        body = self._matrix_body(
+            implementations='["cpython", "pypy"]',
+            overrides='{ implementations = { pypy = { python = "==3.10" } } }',
+        )
+        config = read_pyproject_config(write(tmp_path, body))
+        assert config.matrix is not None
+        assert config.matrix.implementation_overrides == {
+            "pypy": ImplementationOverride(python="==3.10")
+        }
+        assert [target.label for target in plan_targets(config)] == [
+            "pp310-linux_x86_64",
+            "pp310-macos_arm64",
+            "py311-linux_x86_64",
+            "py311-macos_arm64",
+            "py312-linux_x86_64",
+            "py312-macos_arm64",
+            "py313-linux_x86_64",
+            "py313-macos_arm64",
+        ]
+
+    @pytest.mark.parametrize(
+        "overrides",
+        ["{}", "{ implementations = {} }", "{ implementations = { pypy = {} } }"],
+    )
+    def test_empty_implementation_overrides_keep_the_shared_axes(
+        self, tmp_path: Path, overrides: str
+    ) -> None:
+        config = read_pyproject_config(
+            write(tmp_path, self._matrix_body(overrides=overrides))
+        )
+        assert config.matrix is not None
+        assert len(plan_targets(config)) == 6
+
+    @pytest.mark.parametrize(
+        ("overrides", "message"),
+        [
+            ('"==3.11"', "must be a table"),
+            ("{ jython = {} }", "unknown implementation"),
+            ('{ pypy = "==3.11" }', "must be a table"),
+            ('{ pypy = { unknown = "x" } }', "unknown keys"),
+            ("{ pypy = { python = 311 } }", "must be a string PEP 440 specifier"),
+            ('{ pypy = { python = "bad" } }', "must be a PEP 440 specifier"),
+            ('{ pypy = { python = "===bad" } }', "not a valid version"),
+            ('{ pypy = { python = ">=3.11.4" } }', "language .* version only"),
+            ('{ pypy = { python = "==4.0" } }', "No known Python versions"),
+            ("{ pypy = { platforms = [] } }", "at least one platform"),
+            ('{ pypy = { platforms = "linux_x86_64" } }', "must be a list"),
+            ('{ pypy = { platforms = ["freebsd_amd64"] } }', "Unknown platform"),
+            (
+                '{ pypy = { platforms = ["linux_x86_64", "linux_x86_64"] } }',
+                "duplicate entry",
+            ),
+        ],
+    )
+    def test_bad_implementation_override_rejected(
+        self, tmp_path: Path, overrides: str, message: str
+    ) -> None:
+        body = self._matrix_body(
+            implementations='["cpython", "pypy"]',
+            overrides="{ implementations = " + overrides + " }",
+        )
+        with pytest.raises(ConfigError, match=message):
+            read_pyproject_config(write(tmp_path, body))
+
+    def test_cli_can_narrow_implementations_with_file_overrides(
+        self, tmp_path: Path
+    ) -> None:
+        body = self._matrix_body(
+            implementations='["cpython", "pypy"]',
+            overrides='{ implementations = { pypy = { python = "==3.11" } } }',
+        )
+        config = read_pyproject_config(
+            write(tmp_path, body),
+            cli_overrides={"matrix": _cli_matrix(implementations=("cpython",))},
+        )
+        assert {
+            target.marker_env["implementation_name"] for target in plan_targets(config)
+        } == {"cpython"}
+
+    def test_former_singular_implementation_table_is_rejected(
+        self, tmp_path: Path
+    ) -> None:
+        body = self._matrix_body(
+            implementations='["cpython", "pypy"]',
+            implementation='{ pypy = { python = "==3.11" } }',
+        )
+        with pytest.raises(ConfigError, match="unknown keys.*implementation"):
+            read_pyproject_config(write(tmp_path, body))
+
+    @pytest.mark.parametrize(
+        ("overrides", "message"),
+        [
+            ('"pypy"', "overrides must be a table"),
+            ("[]", "overrides must be a table"),
+            ("{ implementation = {} }", "overrides has unknown keys"),
+            ("{ platforms = {} }", "overrides has unknown keys"),
+            ("{ pypy = {} }", "overrides has unknown keys"),
+        ],
+    )
+    def test_override_container_rejects_invalid_shapes_and_categories(
+        self, tmp_path: Path, overrides: str, message: str
+    ) -> None:
+        with pytest.raises(ConfigError, match=message):
+            read_pyproject_config(
+                write(tmp_path, self._matrix_body(overrides=overrides))
+            )
 
     def test_implementations_unknown_rejected(self, tmp_path: Path) -> None:
         body = self._matrix_body(implementations='["jython"]')
