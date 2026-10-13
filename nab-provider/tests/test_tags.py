@@ -1247,7 +1247,9 @@ class TestPyPyTags:
         """The CPython and PyPy tuples accept disjoint native-tag sets."""
         cp = TagSet.for_spec(python_version="3.11", spec=self.SPEC).members
         pp = TagSet.for_spec(
-            python_version="3.11", spec=self.SPEC, implementation="pypy"
+            python_version="3.11",
+            spec=PlatformSpec("linux_x86_64", pypy_abi="pp80"),
+            implementation="pypy",
         ).members
         cp_native = {t for t in cp if t.abi.startswith("cp")}
         pp_native = {t for t in pp if t.abi.startswith("pypy")}
@@ -1559,3 +1561,107 @@ class TestWheelRankAgreesWithExpandedOrder:
 
         placed = {tag: key[0] for tag, key in keys.items() if key is not None}
         assert placed == dict(tags.rank)
+
+
+class TestPyPyAbiSelection:
+    @pytest.mark.parametrize(
+        ("platform_id", "platform_tag"),
+        [
+            ("windows_amd64", "win_amd64"),
+            ("macos_arm64", "macosx_11_0_arm64"),
+            ("linux_x86_64", "manylinux_2_17_x86_64"),
+        ],
+    )
+    @pytest.mark.parametrize("abi", ["pp73", "pp80", "pp12345"])
+    def test_open_abi_accepts_matching_native_wheels(
+        self, platform_id: str, platform_tag: str, abi: str
+    ) -> None:
+        tags = TagSet.for_spec(
+            python_version="3.11", spec=PlatformSpec(platform_id), implementation="pypy"
+        )
+        filename = f"demo-1.0-pp311-pypy311_{abi}-{platform_tag}.whl"
+        assert tags.accepts(filename)
+        assert python_axis_accepts("3.11", "pypy", filename)
+
+    @pytest.mark.parametrize(
+        "suffix",
+        [
+            "pp311-pypy310_pp80-win_amd64",
+            "pp310-pypy310_pp80-win_amd64",
+            "pp311-pypy311_pp80-win_arm64",
+            "pp311-pypy311_ppx-win_amd64",
+            "pp311-pypy311_pp80_any-win_amd64",
+            "pp311-cp311-win_amd64",
+            "cp311-pypy311_pp80-win_amd64",
+            "pp311-pypy311_pp80-any",
+        ],
+    )
+    def test_open_abi_still_checks_all_tag_axes(self, suffix: str) -> None:
+        tags = TagSet.for_spec(
+            python_version="3.11",
+            spec=PlatformSpec("windows_amd64"),
+            implementation="pypy",
+        )
+        assert not tags.accepts(f"demo-1.0-{suffix}.whl")
+
+    def test_exact_abi_filters_and_ranks(self) -> None:
+        spec = PlatformSpec("windows_amd64", pypy_abi="pp80")
+        tags = TagSet.for_spec(python_version="3.11", spec=spec, implementation="pypy")
+        old = _wheel("demo-1.0-pp311-pypy311_pp73-win_amd64.whl")
+        current = _wheel("demo-1.0-pp311-pypy311_pp80-win_amd64.whl")
+        pure = _wheel("demo-1.0-py3-none-any.whl")
+        assert tags.pick([old, pure, current]) is current
+        assert not tags.accepts(old.filename)
+        assert Tag("pp311", "pypy311_pp80", "win_amd64") in tags.members
+        assert spec.label == "windows_amd64-pypyabipp80"
+        with pytest.raises(ValueError, match="requires a PyPy"):
+            TagSet.for_spec(python_version="3.11", spec=spec)
+
+    def test_open_abis_tie_ahead_of_none_and_pure_python(self) -> None:
+        tags = TagSet.for_spec(
+            python_version="3.11",
+            spec=PlatformSpec("windows_amd64"),
+            implementation="pypy",
+        )
+        old = _wheel("demo-1.0-pp311-pypy311_pp73-win_amd64.whl")
+        current = _wheel("demo-1.0-pp311-pypy311_pp80-win_amd64.whl")
+        native_none = _wheel("demo-1.0-pp311-none-win_amd64.whl")
+        pure = _wheel("demo-1.0-py3-none-any.whl")
+        assert tags.wheel_rank(old.filename) == tags.wheel_rank(current.filename)
+        assert tags.pick([pure, native_none, current, old]) is current
+        assert tags.pick([pure, native_none, old, current]) is old
+        for tag in tags.ordered:
+            assert tags.rank[tag] == tags.wheel_rank(f"demo-1.0-{tag}.whl")[0]
+
+    def test_host_python_preserves_the_actual_pypy_abi(self) -> None:
+        host = (Tag("pp311", "pypy311_pp80", "win_amd64"), Tag("py3", "none", "any"))
+        for tags in (
+            TagSet.for_host(tags_source=lambda: host),
+            TagSet.for_host_python("3.11", tags_source=lambda: host),
+        ):
+            assert tags.accepts("demo-1.0-pp311-pypy311_pp80-win_amd64.whl")
+            assert not tags.accepts("demo-1.0-pp311-pypy311_pp73-win_amd64.whl")
+        moved = TagSet.for_host_python("3.10", tags_source=lambda: host)
+        assert moved.accepts("demo-1.0-pp310-pypy310_pp80-win_amd64.whl")
+        assert not moved.accepts("demo-1.0-pp310-pypy310_pp73-win_amd64.whl")
+
+    @pytest.mark.parametrize(
+        "value", ["", "73", "pypy311_pp80", "pp80.0", "PP80", "pp\u0668\u0660"]
+    )
+    def test_invalid_abi_suffix(self, value: str) -> None:
+        with pytest.raises(ValueError, match="pypy-abi must"):
+            PlatformSpec("windows_amd64", pypy_abi=value)
+
+    def test_python_axis_rejects_other_pypy_minors(self) -> None:
+        assert not python_axis_accepts(
+            "3.11", "pypy", "demo-1.0-pp310-pypy310_pp80-win_amd64.whl"
+        )
+        assert not python_axis_accepts(
+            "3.11", "pypy", "demo-1.0-pp311-pypy310_pp80-win_amd64.whl"
+        )
+
+    def test_host_without_native_abi_does_not_invent_one(self) -> None:
+        host = (Tag("pp311", "none", "win_amd64"), Tag("py3", "none", "any"))
+        tags = TagSet.for_host_python("3.10", tags_source=lambda: host)
+        assert tags.accepts("demo-1.0-pp310-none-win_amd64.whl")
+        assert not tags.accepts("demo-1.0-pp310-pypy310_pp80-win_amd64.whl")

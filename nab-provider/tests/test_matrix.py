@@ -726,7 +726,10 @@ class TestImplementationOverrides:
         assert cpython.python_version == "3.13"
         assert cpython.platform_spec is threaded
         assert "cp313t" in {tag.abi for tag in cpython.tags.ordered}
-        assert "pypy311_pp73" in {tag.abi for tag in pypy.tags.ordered}
+        for abi in ("pp73", "pp80"):
+            filename = f"demo-1.0-pp311-pypy311_{abi}-manylinux_2_17_x86_64.whl"
+            assert pypy.tags.accepts(filename)
+            assert not cpython.tags.accepts(filename)
         assert not Marker(cpython.environment_marker_string).evaluate(pypy.marker_env)
         assert not Marker(pypy.environment_marker_string).evaluate(cpython.marker_env)
 

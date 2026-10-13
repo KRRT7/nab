@@ -258,7 +258,7 @@ change only inherited values. `--project-matrix-implementations cpython` selects
 one run, leaving the PyPy override inactive.
 
 A PyPy target sets `platform_python_implementation = "PyPy"` / `implementation_name = "pypy"` for
-marker evaluation and accepts `ppXY-pypyXY_pp73` wheel tags instead of `cpXY`. Labels use the `pp`
+marker evaluation and accepts `ppXY-pypyXY_ppNN` wheel tags instead of `cpXY`. Labels use the `pp`
 interpreter prefix (`pp311-linux_x86_64`).
 
 A CPython-only matrix leaves `implementation_name` open. A matrix with PyPy, or with more than one
@@ -320,7 +320,7 @@ tag-incompatible with a tuple is dropped for that tuple; a version that also shi
 stays, subject to the build policy. Each tuple accepts three wheel-tag dimensions:
 
 - interpreter: `cpXY` for CPython, `ppXY` for PyPy, plus the interpreter-agnostic `py3` tags.
-- abi: `cpXY` and `abi3` for CPython, `cpXYt` and `abi3t` on a free-threaded target, `pypyXY_pp73`
+- abi: `cpXY` and `abi3` for CPython, `cpXYt` and `abi3t` on a free-threaded target, `pypyXY_ppNN`
   for PyPy, and `none`.
 - platform: manylinux or musllinux for the declared libc family, macosx, and win.
 

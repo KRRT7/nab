@@ -12561,6 +12561,27 @@ class TestSiblingMetadataDivergence:
 
     _V = V("1.0")
 
+    def test_open_pypy_abis_do_not_hide_resident_dependency_divergence(self) -> None:
+        """Native ABI siblings share preference when the target leaves its ABI open."""
+        wheels = [
+            _sib_wheel(f"pp311-pypy311_{abi}-win_amd64") for abi in ("pp73", "pp80")
+        ]
+        coordinator = make_coordinator(wheels, package="pkg")
+        for wheel, dep in zip(wheels, ("alpha>=1", "beta>=1"), strict=True):
+            coordinator.index.store_metadata(
+                "pkg", "1.0", _sib_meta(dep), metadata_url=wheel.metadata_url
+            )
+        target = ResolveTarget.for_declared(
+            python_version="3.11",
+            spec=PlatformSpec("windows_amd64"),
+            implementation="pypy",
+        )
+        provider = Provider(coordinator, target=target)
+        with pytest.raises(
+            SiblingMetadataDivergenceError, match="declare different dependencies"
+        ):
+            provider.get_dependencies("pkg", self._V)
+
     def test_divergent_tie_siblings_crash(self) -> None:
         """Two resident tie siblings with different deps crash naming both."""
         wheel_a = _sib_wheel("py2.py3-none-any")

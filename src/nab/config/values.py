@@ -1793,6 +1793,7 @@ _PLATFORM_TABLE_KEYS = frozenset(
         "platform-release",
         "platform-version",
         "free-threaded",
+        "pypy-abi",
     }
 )
 # The platform kind that reads each knob key; any other kind rejects it.
@@ -1868,6 +1869,11 @@ def _parse_platform_table(where: str, value: dict[str, Any]) -> PlatformSpec:
         ),
         platform_version=_parse_string_value(
             f"{where}.platform-version", value.get("platform-version", "")
+        ),
+        pypy_abi=(
+            _parse_string_value(f"{where}.pypy-abi", value["pypy-abi"])
+            if "pypy-abi" in value
+            else None
         ),
         free_threaded=_parse_bool(
             f"{where}.free-threaded", value.get("free-threaded"), default=False
