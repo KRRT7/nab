@@ -178,6 +178,9 @@ def _make_transport(backend: str) -> AsyncHttpTransport:
                 f"run `pip install nab[{backend}]`"
             )
             sys.exit(1)
+        except Exception as exc:  # noqa: BLE001 - constructor errors have backend-specific types
+            printer().error(f"cannot initialize {backend} transport: {exc}")
+            sys.exit(1)
 
     return _make_urllib3_transport()
 
