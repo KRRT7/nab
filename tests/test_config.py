@@ -6614,3 +6614,51 @@ class TestPyprojectParseCount:
             read_pyproject_config(path, discover_workspace=False)
 
         assert parsed.count(body) == 2
+
+
+class TestPyPyAbiConfiguration:
+    @pytest.mark.parametrize("surface", ["matrix", "environment"])
+    def test_pypy_abi_reaches_target(self, tmp_path: Path, surface: str) -> None:
+        body = (
+            'python = "==3.11"\nimplementations = ["pypy"]\nplatforms = [{ id = "windows_amd64", pypy-abi = "pp80" }]\n'
+            if surface == "matrix"
+            else 'python = "3.11"\nimplementation = "pypy"\nplatform = { id = "windows_amd64", pypy-abi = "pp80" }\n'
+        )
+        path = write(
+            tmp_path,
+            ('[tool.nab]\nmode = "universal"\n' if surface == "matrix" else "")
+            + f"[tool.nab.{surface}]\n{body}",
+        )
+        config = read_pyproject_config(path)
+        (target,) = plan_targets(config)
+        assert target.platform_spec == PlatformSpec("windows_amd64", pypy_abi="pp80")
+        assert target.tags.accepts("demo-1.0-pp311-pypy311_pp80-win_amd64.whl")
+        assert not target.tags.accepts("demo-1.0-pp311-pypy311_pp73-win_amd64.whl")
+
+    @pytest.mark.parametrize("value", ["80", "[]", "{}", '""', '"pypy311_pp80"'])
+    def test_bad_pypy_abi_is_a_config_error(self, tmp_path: Path, value: str) -> None:
+        path = write(
+            tmp_path,
+            '[tool.nab.matrix]\npython = "==3.11"\nimplementations = ["pypy"]\nplatforms = [{ id = "windows_amd64", pypy-abi = '
+            + value
+            + " }]\n",
+        )
+        with pytest.raises(ConfigError, match="pypy-abi"):
+            read_pyproject_config(path)
+
+    @pytest.mark.parametrize("surface", ["matrix", "environment"])
+    def test_cpython_cannot_declare_pypy_abi(
+        self, tmp_path: Path, surface: str
+    ) -> None:
+        body = (
+            'python = "==3.11"\nplatforms = [{ id = "windows_amd64", pypy-abi = "pp80" }]\n'
+            if surface == "matrix"
+            else 'python = "3.11"\nplatform = { id = "windows_amd64", pypy-abi = "pp80" }\n'
+        )
+        path = write(
+            tmp_path,
+            ('[tool.nab]\nmode = "universal"\n' if surface == "matrix" else "")
+            + f"[tool.nab.{surface}]\n{body}",
+        )
+        with pytest.raises(ConfigError, match="pypy-abi requires"):
+            read_pyproject_config(path)

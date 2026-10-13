@@ -727,15 +727,16 @@ platforms = [
 ]
 ```
 
-| Key                | Default                  | Meaning                                                                                                                           |
-| ------------------ | ------------------------ | --------------------------------------------------------------------------------------------------------------------------------- |
-| `id`               | required                 | `linux_x86_64`, `linux_aarch64`, `linux_i686`, `linux_armv7l`, `macos_arm64`, `macos_x86_64`, `windows_amd64`, or `windows_arm64` |
-| `libc`             | `"glibc"`                | The Linux C library: `"glibc"` or `"musl"`                                                                                        |
-| `runs-on-libc`     | unset (accept any level) | The glibc/musl the lock must run on; wheels needing newer are dropped                                                             |
-| `runs-on-macos`    | unset (accept any level) | The macOS the lock must run on; wheels needing newer are dropped                                                                  |
-| `platform-release` | `""`                     | The `platform_release` marker value                                                                                               |
-| `platform-version` | `""`                     | The `platform_version` marker value                                                                                               |
-| `free-threaded`    | `false`                  | Target the free-threaded (`cp3XXt`) CPython build                                                                                 |
+| Key                | Default                     | Meaning                                                                                                                           |
+| ------------------ | --------------------------- | --------------------------------------------------------------------------------------------------------------------------------- |
+| `id`               | required                    | `linux_x86_64`, `linux_aarch64`, `linux_i686`, `linux_armv7l`, `macos_arm64`, `macos_x86_64`, `windows_amd64`, or `windows_arm64` |
+| `libc`             | `"glibc"`                   | The Linux C library: `"glibc"` or `"musl"`                                                                                        |
+| `runs-on-libc`     | unset (accept any level)    | The glibc/musl the lock must run on; wheels needing newer are dropped                                                             |
+| `pypy-abi`         | unset (accept any PyPy ABI) | Exact PyPy ABI suffix, such as `"pp80"`; requires a PyPy target                                                                   |
+| `runs-on-macos`    | unset (accept any level)    | The macOS the lock must run on; wheels needing newer are dropped                                                                  |
+| `platform-release` | `""`                        | The `platform_release` marker value                                                                                               |
+| `platform-version` | `""`                        | The `platform_version` marker value                                                                                               |
+| `free-threaded`    | `false`                     | Target the free-threaded (`cp3XXt`) CPython build                                                                                 |
 
 A machine links one C library, so a target accepts one family's wheels: a `glibc` target takes
 manylinux wheels and never musllinux ones, and a `musl` target the reverse.
@@ -757,6 +758,33 @@ fine: a lock that runs on glibc 2.28 runs on anything newer (the same holds for 
 `runs-on-macos = "14.0"` sets the minimum machine to macOS 14. It accepts `macosx_10_9` and
 `macosx_14_0` wheels but drops `macosx_15_0`. A value below the architecture's oldest macOS, 10.4 on
 x86_64 or 11.0 on Apple Silicon, is a config error.
+
+PyPy ABIs are independent of the Python language version. Leave `pypy-abi` unset to retain wheels
+for any native PyPy ABI of the declared Python minor, deferring ABI compatibility to installation.
+To target one ABI in a mixed matrix, declare the suffix in PyPy's platform override:
+
+```toml
+[tool.nab]
+mode = "universal"
+
+[tool.nab.matrix]
+python = ">=3.10,<3.13"
+platforms = ["windows_amd64", "macos_arm64"]
+implementations = ["cpython", "pypy"]
+
+[tool.nab.matrix.overrides.implementations.pypy]
+python = "==3.11"
+platforms = [
+    { id = "windows_amd64", pypy-abi = "pp80" },
+    { id = "macos_arm64", pypy-abi = "pp80" },
+]
+```
+
+Here `pp80` selects `pypy311_pp80` native wheels and excludes `pypy311_pp73`; pure-Python wheels
+remain eligible. The same knob works in `environment.platform` and as `pypy-abi=pp80` after a CLI
+platform ID. An explicit ABI requires every target using that platform table to be PyPy. ABI
+variants cannot be separate matrix targets for the same platform because PEP 508 markers cannot
+distinguish them. A host resolve uses the running interpreter's actual ABI.
 
 A knob belongs to its platform. `libc` and `runs-on-libc` are Linux knobs and `runs-on-macos` is a
 macOS one, so declaring one on a platform that cannot read it is a config error. It would select no

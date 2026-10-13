@@ -5,7 +5,7 @@ live interpreter, so a declared target's tag set is computed from
 :class:`PlatformSpec` and the implementation name directly, never from
 the interpreter running nab. CPython tags come from
 ``packaging.tags.cpython_tags``; PyPy tags are emitted directly
-(interpreter ``ppXY``, abi ``pypyXY_pp73``). Both add
+(interpreter ``ppXY``, ABI declared by ``pypy_abi``). Both add
 interpreter-agnostic tags from ``packaging.tags.compatible_tags``.
 Platform tags use ``mac_platforms`` for macOS and expand the declared
 libc family's tags on Linux, in the order ``sys_tags`` uses, so the
@@ -151,6 +151,9 @@ class PlatformSpec:
     (``platform_release >= "5.10"``) evaluates False and its dependency is
     dropped, so a target that does have that kernel has to declare it.
 
+    ``pypy_abi`` names the exact PyPy ABI suffix, such as ``pp80``. Unset,
+    native wheels for any PyPy ABI of the declared Python minor are admitted.
+
     ``free_threaded`` picks the ``cpXYt`` ABI (and ``abi3t`` in place of
     ``abi3``) of a CPython 3.13+ free-threaded build.
     """
@@ -162,6 +165,7 @@ class PlatformSpec:
     platform_release: str = ""
     platform_version: str = ""
     free_threaded: bool = False
+    pypy_abi: str | None = None
 
     def __post_init__(self) -> None:
         """Reject a knob the declared platform cannot carry.
@@ -175,6 +179,10 @@ class PlatformSpec:
         whole unknown set at once, and that says more than a complaint
         about a knob on a platform that does not exist.
         """
+        if self.pypy_abi is not None and not _PYPY_ABI_RE.fullmatch(self.pypy_abi):
+            msg = f"pypy-abi must be a suffix like 'pp80', got {self.pypy_abi!r}"
+            raise ValueError(msg)
+
         kind = platform_kind(self.platform_id)
         if kind is None:
             return
@@ -221,6 +229,12 @@ class PlatformSpec:
             raise ValueError(msg)
         _check_version_max("runs-on-macos", self.runs_on_macos)
 
+    def check_implementation(self, implementation: str) -> None:
+        """Reject a PyPy ABI declaration on another implementation."""
+        if self.pypy_abi is not None and implementation != "pypy":
+            msg = "pypy-abi requires a PyPy target"
+            raise ValueError(msg)
+
     @property
     def arch(self) -> str:
         """The architecture suffix used in platform tags."""
@@ -244,6 +258,7 @@ class PlatformSpec:
             parts.append(f"-{self.libc}{_version_tag(self.runs_on_libc)}")
 
         fields = (
+            ("pypyabi", self.pypy_abi or ""),
             ("macos", _version_tag(self.runs_on_macos)),
             ("rel", _escape_label_value(self.platform_release)),
             ("ver", _escape_label_value(self.platform_version)),
@@ -402,9 +417,9 @@ def _platform_tags_for_spec(spec: PlatformSpec) -> list[str]:
     raise ValueError(msg)
 
 
-# PyPy 7.3.x soabi, stable across every Python minor PyPy 3 ships
-# (pp36..pp311 all use ``_pp73``); the abi tag is ``pypyXY_pp73``.
-_PYPY_SOABI = "73"
+# PyPy names an ABI independently of its Python language level.
+_PYPY_ABI_RE = re.compile(r"pp[0-9]+", re.ASCII)
+_PYPY_NATIVE_ABI_RE = re.compile(r"pypy([0-9]+)_(pp[0-9]+)", re.ASCII)
 
 # CPython carried the pymalloc flag in its ABI tag through 3.7, so its wheels
 # are tagged cp37m, not cp37.  3.8 dropped the flag.  Left to packaging the
@@ -543,8 +558,9 @@ _WheelT = TypeVar("_WheelT", bound=_NamedWheel)
 
 # One line of a target's tag order with the platform axis projected out:
 # interpreter, abi, and either the entry's own platform or None where the
-# platform axis multiplies it.
-_AxisEntry = tuple[str, str, str | None]
+# platform axis multiplies it. A None ABI matches any native PyPy ABI of
+# that interpreter; the open family occupies one preference block.
+_AxisEntry = tuple[str, str | None, str | None]
 
 
 # Stands in for "not looked up yet" in ``TagSet._placed``, which holds a real
@@ -558,7 +574,7 @@ _UNPLACED: Final = _Unplaced.TOKEN
 
 
 class _AxisIndex(SlottedValue):
-    """Where a tag sits in a target's expanded tag order.
+    """Where a tag sits in a target's preference order.
 
     ``multiplied`` holds the first index of each interpreter/abi block the
     platform axis multiplies, ``fixed`` the index of each tag that names a
@@ -570,13 +586,13 @@ class _AxisIndex(SlottedValue):
     __match_args__ = ("multiplied", "fixed", "platforms")
     __slots__ = __match_args__
 
-    multiplied: Mapping[tuple[str, str], int]
+    multiplied: Mapping[tuple[str, str | None], int]
     fixed: Mapping[Tag, int]
     platforms: Mapping[str, int]
 
     def __init__(
         self,
-        multiplied: Mapping[tuple[str, str], int],
+        multiplied: Mapping[tuple[str, str | None], int],
         fixed: Mapping[Tag, int],
         platforms: Mapping[str, int],
     ) -> None:
@@ -586,13 +602,15 @@ class _AxisIndex(SlottedValue):
         self.platforms = platforms
 
     def of(self, tag: Tag) -> int | None:
-        """Return ``tag``'s index in the expanded order, or None if unaccepted.
+        """Return ``tag``'s preference index, or None if unaccepted.
 
         The interpreter-agnostic ``any`` platform is never on the platform
         axis, so no tag is reachable both as a block member and as an entry
         naming its own platform.
         """
         base = self.multiplied.get((tag.interpreter, tag.abi))
+        if base is None and _is_pypy_native(tag):
+            base = self.multiplied.get((tag.interpreter, None))
         if base is not None:
             offset = self.platforms.get(tag.platform)
             if offset is not None:
@@ -612,9 +630,11 @@ class TagSet(SlottedValue):
     caller that asks for :attr:`ordered`.
 
     ``_entries`` is the interpreter/abi axis, as :func:`_tag_order_template`
-    returns it, and ``_platforms`` the platform axis.  ``ordered`` is PEP 425
-    preference order, most specific first, so a tag's index in it is the
-    target's preference for the wheels carrying it.
+    returns it, and ``_platforms`` the platform axis. ``ordered`` enumerates
+    the finite tags. An unset PyPy ABI admits an open family of native tags,
+    matched by ``accepts`` and ``wheel_rank`` without enumerating versions.
+    That family shares one preference block ahead of the interpreter's
+    ``none`` tags.
     """
 
     # No __slots__: the cached properties below need a __dict__.
@@ -632,23 +652,25 @@ class TagSet(SlottedValue):
 
     @cached_property
     def ordered(self) -> tuple[Tag, ...]:
-        """The accepted tags, most specific first."""
+        """The finite tags, most specific first; an open PyPy ABI is not enumerated."""
         return tuple(_expand_axes(self._entries, self._platforms))
 
     @cached_property
     def members(self) -> frozenset[Tag]:
-        """The accepted tags as a set."""
+        """The finite tags as a set; use ``accepts`` for open PyPy ABIs."""
         return frozenset(self.ordered)
 
     @cached_property
     def rank(self) -> Mapping[Tag, int]:
-        """Preference index per accepted tag; the lowest index wins."""
-        return {tag: i for i, tag in enumerate(self.ordered)}
+        """Preference index per finite tag; the lowest index wins."""
+        return {
+            tag: i for tag in self.ordered if (i := self._index.of(tag)) is not None
+        }
 
     @cached_property
     def _index(self) -> _AxisIndex:
-        """The lookup tables that place one wheel tag in :attr:`ordered`."""
-        multiplied: dict[tuple[str, str], int] = {}
+        """The lookup tables that place one wheel tag in preference order."""
+        multiplied: dict[tuple[str, str | None], int] = {}
         fixed: dict[Tag, int] = {}
         base = 0
 
@@ -657,6 +679,7 @@ class TagSet(SlottedValue):
                 multiplied[(interpreter, abi)] = base
                 base += len(self._platforms)
             else:
+                assert abi is not None
                 fixed[ptags.Tag(interpreter, abi, platform_)] = base
                 base += 1
 
@@ -688,7 +711,7 @@ class TagSet(SlottedValue):
         return rank_index
 
     def accepts(self, wheel_filename: str) -> bool:
-        """Return True when the target can install ``wheel_filename``.
+        """Whether ``wheel_filename`` matches the target's declared tag constraints.
 
         A filename that is not a parseable wheel is never accepted.
         """
@@ -772,9 +795,13 @@ class TagSet(SlottedValue):
         implementation: str = "cpython",
     ) -> TagSet:
         """Return the tags a declared (python, platform, impl) target accepts."""
+        spec.check_implementation(implementation)
         return cls(
             _tag_order_template(
-                python_version, implementation, free_threaded=spec.free_threaded
+                python_version,
+                implementation,
+                free_threaded=spec.free_threaded,
+                pypy_abi=spec.pypy_abi,
             ),
             _platform_axis(spec),
         )
@@ -826,10 +853,16 @@ class TagSet(SlottedValue):
             _FREE_THREADED_ABI_SUFFIX
         ) and supports_free_threading(python)
 
-        return cls(
-            _tag_order_template(python, implementation, free_threaded=free_threaded),
-            tuple(platforms),
+        match = _PYPY_NATIVE_ABI_RE.fullmatch(host[0].abi)
+        pypy_abi = match[2] if match is not None else None
+
+        entries = _tag_order_template(
+            python, implementation, free_threaded=free_threaded, pypy_abi=pypy_abi
         )
+        # A host without a native ABI cannot supply one for another Python.
+        if implementation == "pypy" and match is None:
+            entries = tuple(entry for entry in entries if entry[1] is not None)
+        return cls(entries, tuple(platforms))
 
 
 @cache
@@ -913,6 +946,8 @@ def _expand_axes(
     every call.
     """
     for interpreter, abi, fixed_platform in entries:
+        if abi is None:
+            continue
         instances = _TARGET_TAGS.setdefault((interpreter, abi), {})
         axis_platforms = platforms if fixed_platform is None else (fixed_platform,)
         for platform_ in axis_platforms:
@@ -924,7 +959,11 @@ def _expand_axes(
 
 @cache
 def _tag_order_template(
-    python_version: str, implementation: str, *, free_threaded: bool
+    python_version: str,
+    implementation: str,
+    *,
+    free_threaded: bool,
+    pypy_abi: str | None = None,
 ) -> tuple[_AxisEntry, ...]:
     """Return a target's tag order with the platform axis projected out.
 
@@ -932,6 +971,7 @@ def _tag_order_template(
     the whole platform list before moving to the next, so deriving the order
     against a single placeholder platform and expanding each placeholder entry
     back over the real list reproduces the sequence tag for tag.  A ``None``
+    ABI reserves an open PyPy preference block. A ``None``
     platform marks an entry the platform axis multiplies; the rest
     (``cpXY-none-any``, ``py3-none-any``) name a platform of their own.
 
@@ -941,7 +981,11 @@ def _tag_order_template(
     build.  ``TestSharedTagInstances`` pins the expansion against packaging's
     own output rather than trusting it.
     """
-    return tuple(
+    open_abi: tuple[_AxisEntry, ...] = ()
+    if implementation == "pypy" and pypy_abi is None:
+        major, minor = _python_pair(python_version)
+        open_abi = ((f"pp{major}{minor}", None, None),)
+    return open_abi + tuple(
         (
             tag.interpreter,
             tag.abi,
@@ -952,6 +996,7 @@ def _tag_order_template(
             (_PLATFORM_PLACEHOLDER,),
             implementation,
             free_threaded=free_threaded,
+            pypy_abi=pypy_abi,
         )
     )
 
@@ -962,6 +1007,7 @@ def _packaging_tags(
     implementation: str,
     *,
     free_threaded: bool,
+    pypy_abi: str | None = None,
 ) -> Iterable[Tag]:
     """Yield a target's tags as packaging derives them.
 
@@ -979,9 +1025,10 @@ def _packaging_tags(
 
     if implementation == "pypy":
         interpreter = f"pp{major}{minor}"
-        abi = f"pypy{major}{minor}_pp{_PYPY_SOABI}"
-        for platform_ in platforms:
-            yield ptags.Tag(interpreter, abi, platform_)
+        if pypy_abi is not None:
+            abi = f"pypy{major}{minor}_{pypy_abi}"
+            for platform_ in platforms:
+                yield ptags.Tag(interpreter, abi, platform_)
         for platform_ in platforms:
             yield ptags.Tag(interpreter, "none", platform_)
         # ``sys_tags`` hands ``compatible_tags`` the major-only ``pp3``, so a
@@ -1060,6 +1107,16 @@ def _python_axis_accepts_tags(
     """Return whether the Python axis accepts any wheel tag."""
     accepted = _python_axis_tags(python_version, implementation)
     for tag in tags:
+        if implementation == "pypy" and _is_pypy_native(tag):
+            major, minor = _python_pair(python_version)
+            if tag.interpreter == f"pp{major}{minor}":
+                return True
         if (tag.interpreter, tag.abi) in accepted:
             return True
     return False
+
+
+def _is_pypy_native(tag: Tag) -> bool:
+    """Whether a native PyPy ABI matches its interpreter's Python minor."""
+    match = _PYPY_NATIVE_ABI_RE.fullmatch(tag.abi)
+    return match is not None and tag.interpreter == f"pp{match[1]}"

@@ -681,9 +681,7 @@ def plan_targets(config: NabProjectConfig) -> tuple[ResolveTarget, ...]:
     targets = _plan_targets(config.matrix, config.environment)
 
     if config.environment is not None:
-        _check_free_threaded_environment(
-            config.environment, (targets[0].python_version,)
-        )
+        _check_environment_build(config.environment, (targets[0].python_version,))
 
     for target in targets:
         _check_requires_python_admits_target(
@@ -731,7 +729,7 @@ def _declared_target(environment: EnvironmentConfig) -> ResolveTarget:
     axis = python_axis_environment(python)
     implementation = environment.implementation or "cpython"
 
-    _check_free_threaded_environment(
+    _check_environment_build(
         environment, (axis["python_version"],) if environment.python else ()
     )
 
@@ -745,10 +743,10 @@ def _declared_target(environment: EnvironmentConfig) -> ResolveTarget:
     )
 
 
-def _check_free_threaded_environment(
+def _check_environment_build(
     environment: EnvironmentConfig, python_versions: Sequence[str]
 ) -> None:
-    """Hold ``[tool.nab.environment]`` to the free-threaded interpreter floor.
+    """Reject interpreter build knobs the environment cannot satisfy.
 
     ``python_versions`` is empty for a table that names no python, so the
     parse checks only the implementation and :func:`plan_targets` checks
@@ -757,6 +755,9 @@ def _check_free_threaded_environment(
     if environment.platform is None:
         return
     try:
+        environment.platform.check_implementation(
+            environment.implementation or "cpython"
+        )
         check_free_threaded(
             platforms=(environment.platform,),
             implementations=(environment.implementation or "cpython",),

@@ -25,6 +25,7 @@ require agreement:
 
 from __future__ import annotations
 
+from dataclasses import replace
 from types import ModuleType
 
 import pytest
@@ -158,6 +159,8 @@ class TestTagOrderMatchesUpstream:
         self, python_version: str, spec: PlatformSpec, implementation: str
     ) -> None:
         """Vendored tag order equals the upstream-rebuilt order."""
+        if implementation == "pypy":
+            spec = replace(spec, pypy_abi="pp73")
         platforms = _platform_tags_for_spec(spec)
         got = _triples(
             TagSet.for_spec(
@@ -411,6 +414,8 @@ class TestSelectWheelMinimizesUpstreamRank:
         implementation: str,
     ) -> None:
         """The selected wheel's best upstream rank is the minimum over all wheels."""
+        if implementation == "pypy":
+            spec = replace(spec, pypy_abi="pp73")
         platforms = _platform_tags_for_spec(spec)
         order = _oracle_tags_in_order(
             python_version,
