@@ -1,12 +1,4 @@
-"""Tests for ``Range``'s memoized hash and the pickle state that goes with it.
-
-The memo lives in a slot, and slots land in the default pickle state, so an
-unpickled range would otherwise carry a hash its own process never computed.
-``NEGATIVE_INFINITY`` and ``POSITIVE_INFINITY`` hash as plain strings, which
-makes that hash depend on the writing process's ``PYTHONHASHSEED``.  The
-cross-process test at the bottom is the one that would catch a regression;
-the rest stay in process, where the same behaviour is easier to read.
-"""
+"""Tests for ``Range``'s memoized hash and restored set algebra."""
 
 from __future__ import annotations
 
@@ -14,6 +6,7 @@ import os
 import pickle
 import subprocess
 import sys
+from copy import deepcopy
 from pathlib import Path
 
 import pytest
@@ -64,6 +57,11 @@ def round_trip(
 ) -> Range[int]:
     """Pickle and unpickle ``value`` inside this process."""
     return pickle.loads(pickle.dumps(value, protocol))  # noqa: S301
+
+
+def restore_range(value: Range[int], protocol: int | None) -> Range[int]:
+    """Copy a range through pickle, or deepcopy when ``protocol`` is ``None``."""
+    return deepcopy(value) if protocol is None else round_trip(value, protocol)
 
 
 def run_at_seed(source: str, seed: int, *args: str) -> str:
@@ -170,3 +168,36 @@ class TestPickle:
         assert hashes_agree == "True"
         assert index_hit == "restored"
         assert distinct == "1"
+
+
+@pytest.mark.parametrize("protocol", [*PROTOCOLS, pytest.param(None, id="deepcopy")])
+@pytest.mark.parametrize(
+    "original",
+    [
+        pytest.param(Range.full(), id="full"),
+        pytest.param(Range.less_than(3), id="upper-bounded"),
+        pytest.param(Range.at_least(3), id="lower-bounded"),
+    ],
+)
+class TestRestoredAlgebra:
+    def test_complement_matches_fresh_range(
+        self, original: Range[int], protocol: int | None
+    ) -> None:
+        restored = restore_range(original, protocol)
+
+        assert ~restored == ~original
+
+    def test_difference_from_equal_fresh_range_is_empty(
+        self, original: Range[int], protocol: int | None
+    ) -> None:
+        restored = restore_range(original, protocol)
+
+        assert (original - restored).is_empty
+        assert (restored - original).is_empty
+
+    def test_complement_is_disjoint_from_fresh_range(
+        self, original: Range[int], protocol: int | None
+    ) -> None:
+        restored = restore_range(original, protocol)
+
+        assert original.is_disjoint(~restored)
