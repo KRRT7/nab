@@ -312,6 +312,181 @@ class TestImplementationAxis:
             matrix.expand()
 
 
+class TestImplementationPython:
+    """Implementation-specific ranges restrict the shared Python axis."""
+
+    @pytest.mark.parametrize(
+        ("python_order", "expected"),
+        [
+            (
+                "asc",
+                [
+                    "py310-macos_arm64",
+                    "py310-linux_x86_64",
+                    "pp311-macos_arm64",
+                    "py311-macos_arm64",
+                    "pp311-linux_x86_64",
+                    "py311-linux_x86_64",
+                    "py312-macos_arm64",
+                    "py312-linux_x86_64",
+                ],
+            ),
+            (
+                "desc",
+                [
+                    "py312-macos_arm64",
+                    "py312-linux_x86_64",
+                    "pp311-macos_arm64",
+                    "py311-macos_arm64",
+                    "pp311-linux_x86_64",
+                    "py311-linux_x86_64",
+                    "py310-macos_arm64",
+                    "py310-linux_x86_64",
+                ],
+            ),
+        ],
+    )
+    def test_restricted_matrix_preserves_target_order(
+        self, python_order: str, expected: list[str]
+    ) -> None:
+        matrix = Matrix(
+            python=">=3.10,<3.13",
+            platforms=(PlatformSpec("macos_arm64"), PlatformSpec("linux_x86_64")),
+            python_order=python_order,
+            implementations=("pypy", "cpython"),
+            implementation_python={"pypy": "==3.11"},
+        )
+        targets = matrix.expand()
+        assert [target.label for target in targets] == expected
+
+        pypy_312 = {
+            **targets[0].marker_env,
+            "python_version": "3.12",
+            "python_full_version": "3.12.0",
+            "implementation_version": "3.12.0",
+            "implementation_name": "pypy",
+            "platform_python_implementation": "PyPy",
+        }
+        assert not any(
+            Marker(target.environment_marker_string).evaluate(pypy_312)
+            for target in targets
+        )
+
+    def test_restriction_cannot_widen_shared_range(self) -> None:
+        matrix = Matrix(
+            python=">=3.10,<3.13",
+            platforms=(PlatformSpec("linux_x86_64"),),
+            implementations=("pypy",),
+            implementation_python={"pypy": ">=3.9,<3.12"},
+        )
+        assert [target.python_version for target in matrix.expand()] == ["3.10", "3.11"]
+
+    def test_explicit_empty_mapping_preserves_default_targets(self) -> None:
+        default = Matrix(
+            python=">=3.11,<3.13",
+            platforms=(PlatformSpec("linux_x86_64"),),
+        ).expand()
+        empty = Matrix(
+            python=">=3.11,<3.13",
+            platforms=(PlatformSpec("linux_x86_64"),),
+            implementation_python={},
+        ).expand()
+        assert empty == default
+        assert all(not target.declares_implementation for target in empty)
+
+    def test_unselected_implementation_range_is_inactive(self) -> None:
+        matrix = Matrix(
+            python="==3.12",
+            platforms=(PlatformSpec("linux_x86_64"),),
+            implementation_python={"pypy": "==4.0"},
+        )
+        (target,) = matrix.expand()
+        assert target.python_version == "3.12"
+        assert target.implementation == "cpython"
+        assert not target.declares_implementation
+
+    def test_unknown_implementation_range_key_is_rejected(self) -> None:
+        matrix = Matrix(
+            python="==3.12",
+            platforms=(PlatformSpec("linux_x86_64"),),
+            implementation_python={"jython": "==3.12"},
+        )
+        with pytest.raises(ValueError, match="Unknown implementation_python"):
+            matrix.expand()
+
+    @pytest.mark.parametrize("implementation", ["cpython", "pypy"])
+    def test_invalid_range_is_rejected_even_when_unselected(
+        self, implementation: str
+    ) -> None:
+        matrix = Matrix(
+            python="==3.12",
+            platforms=(PlatformSpec("linux_x86_64"),),
+            implementation_python={implementation: "banana"},
+        )
+        with pytest.raises(ValueError, match="Invalid specifier"):
+            matrix.expand()
+
+    @pytest.mark.parametrize("restriction", ["==4.0", "==3.10"])
+    def test_empty_selected_range_is_rejected(self, restriction: str) -> None:
+        matrix = Matrix(
+            python=">=3.11,<3.13",
+            platforms=(PlatformSpec("linux_x86_64"),),
+            implementations=("cpython", "pypy"),
+            implementation_python={"pypy": restriction},
+        )
+        with pytest.raises(ValueError, match=r"implementation_python\['pypy'\]"):
+            matrix.expand()
+
+    def test_patch_pin_applies_to_each_selected_implementation(self) -> None:
+        matrix = Matrix(
+            python=">=3.11,<3.13",
+            platforms=(PlatformSpec("linux_x86_64"),),
+            implementations=("cpython", "pypy"),
+            implementation_python={"pypy": "==3.11"},
+            python_patches={"3.11": "3.11.4"},
+        )
+        targets = matrix.expand()
+        pinned = [target for target in targets if target.python_version == "3.11"]
+        assert [target.implementation for target in pinned] == ["cpython", "pypy"]
+        assert all(target.python_full_version == "3.11.4" for target in pinned)
+        assert all(not target.is_minor_interval for target in pinned)
+
+        (unpinned,) = [target for target in targets if target.python_version == "3.12"]
+        assert unpinned.implementation == "cpython"
+        assert unpinned.is_minor_interval
+
+    def test_free_threaded_range_checks_only_selected_minors(self) -> None:
+        matrix = Matrix(
+            python=">=3.12,<3.15",
+            platforms=(PlatformSpec("linux_x86_64", free_threaded=True),),
+            implementation_python={"cpython": ">=3.13"},
+        )
+        assert [target.python_version for target in matrix.expand()] == ["3.13", "3.14"]
+
+    def test_free_threaded_range_still_rejects_old_selected_minor(self) -> None:
+        matrix = Matrix(
+            python=">=3.12,<3.15",
+            platforms=(PlatformSpec("linux_x86_64", free_threaded=True),),
+            implementation_python={"cpython": "==3.12"},
+        )
+        with pytest.raises(
+            ValueError, match="free-threaded platform needs CPython 3.13"
+        ):
+            matrix.expand()
+
+    def test_free_threaded_range_still_rejects_pypy(self) -> None:
+        matrix = Matrix(
+            python=">=3.13,<3.15",
+            platforms=(PlatformSpec("linux_x86_64", free_threaded=True),),
+            implementations=("cpython", "pypy"),
+            implementation_python={"pypy": "==3.13"},
+        )
+        with pytest.raises(
+            ValueError, match="free-threaded platform needs CPython, not"
+        ):
+            matrix.expand()
+
+
 class TestTargetLabels:
     """Expansion gives each target a distinct label."""
 

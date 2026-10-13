@@ -662,26 +662,47 @@ python-order = "asc"                    # "asc" | "desc"
 python-patches = { "3.11" = "3.11.4" }
 ```
 
-The matrix has three axes, and nab resolves the full cross product: the example above declares 3
-pythons, 2 platforms and 2 implementations, so it plans 12 targets.
+The matrix has three axes. Without `implementation-python` restrictions, nab resolves the full cross
+product: the example above declares 3 pythons, 2 platforms and 2 implementations, so it plans 12
+targets.
 
-| Key               | Default       | Meaning                                                                        |
-| ----------------- | ------------- | ------------------------------------------------------------------------------ |
-| `python`          | required      | A PEP 440 range like `>=3.11,<3.14`, expanded into one target per minor        |
-| `platforms`       | required      | The platforms to model; a bare id, or a table of the tag knobs below           |
-| `implementations` | `["cpython"]` | The interpreter implementations to model: `"cpython"`, `"pypy"`                |
-| `python-order`    | `"asc"`       | Cross-target alignment direction                                               |
-| `python-patches`  | none          | Pins a minor to one patch release, resolved whole instead of split into slices |
+| Key                     | Default       | Meaning                                                                        |
+| ----------------------- | ------------- | ------------------------------------------------------------------------------ |
+| `python`                | required      | A PEP 440 range like `>=3.11,<3.14`, expanded into one target per minor        |
+| `platforms`             | required      | The platforms to model; a bare id, or a table of the tag knobs below           |
+| `implementations`       | `["cpython"]` | The interpreter implementations to model: `"cpython"`, `"pypy"`                |
+| `implementation-python` | none          | Per-implementation PEP 440 ranges that narrow `python`                         |
+| `python-order`          | `"asc"`       | Cross-target alignment direction                                               |
+| `python-patches`        | none          | Pins a minor to one patch release, resolved whole instead of split into slices |
 
 `python-order` sets the alignment direction: `asc` mirrors uv's `fork-strategy=fewest`, `desc`
 mirrors `fork-strategy=requires-python`.
 
 ### Interpreter implementations
 
-`implementations` names the interpreters to model, and each entry multiplies the target count. An
-unknown implementation, a duplicate, and an empty list are each a config error. See
-[Universal resolution](../explanation/universal.md) for how the axis is modelled and what it puts on
-the lockfile markers.
+`implementations` names the interpreters to model. An unknown implementation, a duplicate, and an
+empty list are each a config error. See [Universal resolution](../explanation/universal.md) for how
+the axis is modelled and what it puts on the lockfile markers.
+
+`implementation-python` restricts the Python minors for each implementation. Each entry intersects
+with `python`; implementations without an entry use the whole range. For CPython 3.10 through 3.15
+and PyPy 3.11 on the same platforms:
+
+```toml
+[tool.nab.matrix]
+python = ">=3.10,<3.16"
+platforms = ["linux_x86_64", "macos_arm64"]
+implementations = ["cpython", "pypy"]
+
+[tool.nab.matrix.implementation-python]
+pypy = "==3.11"
+```
+
+Keys must name known implementations, and values use the same minor-version specifiers as `python`.
+An enabled implementation whose intersection selects no known Python minor is a config error. An
+entry does not enable its implementation, and entries for disabled implementations are allowed.
+`python-order` still orders the selected minors across all implementations; `python-patches` still
+pins every target of that minor to the same patch release.
 
 ### Platform tag knobs
 
@@ -772,8 +793,8 @@ is a config error. See [Build policy](build-policy.md).
 
 - `[tool.nab.matrix].python`: a range like `>=3.11,<3.14`, expanded into one target per minor
   version. Used only by universal mode. Pair with `[tool.nab.matrix].platforms`,
-  `[tool.nab.matrix].implementations` and (optionally) `[tool.nab.matrix].python-patches` to control
-  the resolve and marker shape across all targets.
+  `[tool.nab.matrix].implementations` and (optionally) `[tool.nab.matrix].implementation-python` and
+  `[tool.nab.matrix].python-patches` to control the resolve and marker shape across all targets.
 
 Declaring a `[tool.nab.matrix]` table while `mode` is `specific` is an error: the matrix is the list
 of targets to resolve, so leaving mode behind is almost always an oversight rather than an intent.
@@ -799,6 +820,19 @@ nab lock --project-mode universal \
 `--project-matrix-platforms` takes platform ids and `KEY=VALUE` tag settings up to the next flag.
 `true` and `false` are booleans. `--project-matrix-python-patches` takes `MINOR=FULL` tokens, while
 `--project-matrix-implementations` takes names.
+
+`--project-matrix-implementation-python` takes `IMPLEMENTATION=SPECIFIER` tokens:
+
+```bash
+nab lock --project-mode universal \
+  --project-matrix-python '>=3.10,<3.16' \
+  --project-matrix-platforms linux_x86_64 macos_arm64 \
+  --project-matrix-implementations cpython pypy \
+  --project-matrix-implementation-python 'pypy===3.11'
+```
+
+The first `=` separates the implementation from its specifier, so `pypy===3.11` sets
+`pypy = "==3.11"`. Quote tokens containing shell operators such as `<` or `>`.
 
 Each flag replaces one table key and leaves the others in place:
 

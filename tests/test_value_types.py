@@ -169,6 +169,7 @@ CASES = [
             "python_order": "asc",
             "python_patches": None,
             "implementations": ("cpython",),
+            "implementation_python": None,
         },
         {
             "python": "3.13",
@@ -176,6 +177,7 @@ CASES = [
             "python_order": "desc",
             "python_patches": {"3.12": "3.12.4"},
             "implementations": ("pypy",),
+            "implementation_python": {"pypy": "==3.12"},
         },
     ),
     Case(
@@ -549,6 +551,7 @@ DEFAULTS = [
             "python_order": "asc",
             "python_patches": None,
             "implementations": ("cpython",),
+            "implementation_python": None,
         },
     ),
     (ConflictSet, {"members": ()}, {"policy": ConflictPolicy.AT_MOST_ONE}),

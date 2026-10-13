@@ -147,6 +147,7 @@ class MatrixConfig(ValueType):
         "python_order",
         "python_patches",
         "implementations",
+        "implementation_python",
     )
 
     python: str
@@ -154,6 +155,7 @@ class MatrixConfig(ValueType):
     python_order: str
     python_patches: Mapping[str, str] | None
     implementations: tuple[str, ...]
+    implementation_python: Mapping[str, str] | None
 
     def __init__(
         self,
@@ -162,6 +164,7 @@ class MatrixConfig(ValueType):
         python_order: str = "asc",
         python_patches: Mapping[str, str] | None = None,
         implementations: tuple[str, ...] = ("cpython",),
+        implementation_python: Mapping[str, str] | None = None,
     ) -> None:
         """Record the axes ``[tool.nab.matrix]`` declared."""
         self.python = python
@@ -169,6 +172,7 @@ class MatrixConfig(ValueType):
         self.python_order = python_order
         self.python_patches = python_patches
         self.implementations = implementations
+        self.implementation_python = implementation_python
 
 
 def matrix_from_config(matrix: MatrixConfig) -> Matrix:
@@ -181,6 +185,7 @@ def matrix_from_config(matrix: MatrixConfig) -> Matrix:
             dict(matrix.python_patches) if matrix.python_patches is not None else None
         ),
         implementations=matrix.implementations,
+        implementation_python=matrix.implementation_python,
     )
 
 
@@ -1742,7 +1747,9 @@ def _patches_spelling(where: str, table: str) -> str:
     return f"[{table}.python-patches]"
 
 
-def _validate_matrix_python(spec: str, where: str, table: str) -> None:
+def _validate_matrix_python(
+    spec: str, where: str, table: str, *, key: str = "python"
+) -> None:
     """Reject a python axis finer than major.minor.
 
     The axis lists language (minor) Python versions; patch pins belong in
@@ -1751,13 +1758,13 @@ def _validate_matrix_python(spec: str, where: str, table: str) -> None:
     try:
         specifier_set = SpecifierSet(spec)
     except InvalidSpecifier as exc:
-        msg = f"{where}.python must be a PEP 440 specifier, got {spec!r}"
+        msg = f"{where}.{key} must be a PEP 440 specifier, got {spec!r}"
         raise SourceConfigError(msg) from exc
     for clause in specifier_set:
         try:
             version = Version(clause.version.removesuffix(".*"))
         except ValueError as exc:
-            msg = f"{where}.python clause {clause} is not a valid version"
+            msg = f"{where}.{key} clause {clause} is not a valid version"
             raise SourceConfigError(msg) from exc
 
         # Reject pre/post/dev/local qualifiers and patch-level release tuples.
@@ -1770,7 +1777,7 @@ def _validate_matrix_python(spec: str, where: str, table: str) -> None:
         )
         if len(version.release) > _MINOR_RELEASE_PARTS or any(finer):
             msg = (
-                f"{where}.python axis is a language (minor) version only; "
+                f"{where}.{key} axis is a language (minor) version only; "
                 f"{clause} is finer than major.minor. Put patch versions in "
                 f"{_patches_spelling(where, table)}."
             )
@@ -1937,6 +1944,7 @@ _MATRIX_KEYS = frozenset(
         "python-order",
         "python-patches",
         "implementations",
+        "implementation-python",
     }
 )
 
@@ -1983,15 +1991,47 @@ def parse_matrix(
         raise SourceConfigError(msg)
     patches = _parse_python_patches(value.get("python-patches"), where)
     implementations = _parse_implementations(value.get("implementations"), where)
+    implementation_python = _parse_implementation_python(
+        value.get("implementation-python"), where, table
+    )
     config = MatrixConfig(
         python=python,
         platforms=platforms,
         python_order=python_order,
         python_patches=patches,
         implementations=implementations,
+        implementation_python=implementation_python,
     )
     _validate_matrix_axes(config, where)
     return config
+
+
+def _parse_implementation_python(
+    value: object, where: str, table: str
+) -> dict[str, str] | None:
+    """Read the Python restrictions for named interpreter implementations."""
+    if value is None:
+        return None
+    label = f"{where}.implementation-python"
+    if not isinstance(value, dict):
+        msg = f"{label} must be a table of PEP 440 specifiers"
+        raise SourceConfigError(msg)
+    restrictions: dict[str, str] = {}
+    for implementation, spec in value.items():
+        if implementation not in IMPLEMENTATIONS:
+            msg = (
+                f"{label} has unknown implementation {implementation!r}; "
+                f"expected {list(IMPLEMENTATIONS)!r}"
+            )
+            raise SourceConfigError(msg)
+        if not isinstance(spec, str):
+            msg = f"{label}.{implementation} must be a string PEP 440 specifier"
+            raise SourceConfigError(msg)
+        _validate_matrix_python(
+            spec, where, table, key=f"implementation-python.{implementation}"
+        )
+        restrictions[implementation] = spec
+    return restrictions
 
 
 def _validate_matrix_axes(config: MatrixConfig, where: str) -> None:

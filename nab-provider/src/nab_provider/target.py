@@ -1242,8 +1242,11 @@ class Matrix:
     ``python_patches={"3.11": "3.11.4", "3.12": "3.12.1"}``.
 
     ``implementations``: the interpreter implementations to model
-    (``"cpython"``, ``"pypy"``).  Each multiplies the target count;
-    markers and wheel tags resolve per implementation.
+    (``"cpython"``, ``"pypy"``).  Markers and wheel tags resolve per
+    implementation.
+
+    ``implementation_python``: optional implementation-specific Python
+    specifiers, each restricting the shared ``python`` range.
     """
 
     python: str
@@ -1251,6 +1254,7 @@ class Matrix:
     python_order: str = "asc"
     python_patches: dict[str, str] | None = None
     implementations: tuple[str, ...] = ("cpython",)
+    implementation_python: Mapping[str, str] | None = None
 
     def expand(self) -> list[ResolveTarget]:
         """Expand the matrix into concrete targets.
@@ -1290,16 +1294,20 @@ class Matrix:
             )
             raise ValueError(msg)
 
-        check_free_threaded(
-            platforms=self.platforms,
-            implementations=self.implementations,
-            python_versions=tuple(_pythons_in_range(self.python)),
-        )
-
         py_versions = list(_pythons_in_range(self.python))
         if not py_versions:
             msg = f"No known Python versions match {self.python!r}"
             raise ValueError(msg)
+        by_implementation = self._implementation_python_versions(py_versions)
+        check_free_threaded(
+            platforms=self.platforms,
+            implementations=self.implementations,
+            python_versions=tuple(
+                py
+                for py in py_versions
+                if any(py in versions for versions in by_implementation.values())
+            ),
+        )
         if self.python_order == "desc":
             py_versions.reverse()
 
@@ -1315,7 +1323,35 @@ class Matrix:
             for py in py_versions
             for spec in self.platforms
             for impl in self.implementations
+            if py in by_implementation[impl]
         ]
+
+    def _implementation_python_versions(
+        self, python_versions: Sequence[str]
+    ) -> dict[str, frozenset[str]]:
+        """Return each selected implementation's minors within the shared range."""
+        restrictions = self.implementation_python or {}
+        unknown = [i for i in restrictions if i not in IMPLEMENTATION_MARKERS]
+        if unknown:
+            msg = f"Unknown implementation_python implementations: {unknown!r}"
+            raise ValueError(msg)
+
+        ranges = {
+            impl: frozenset(_pythons_in_range(spec))
+            for impl, spec in restrictions.items()
+        }
+        shared = frozenset(python_versions)
+        effective: dict[str, frozenset[str]] = {}
+        for impl in self.implementations:
+            versions = shared & ranges.get(impl, shared)
+            if not versions:
+                msg = (
+                    f"No known Python versions match implementation_python[{impl!r}]"
+                    f" {restrictions[impl]!r} within python {self.python!r}"
+                )
+                raise ValueError(msg)
+            effective[impl] = versions
+        return effective
 
 
 def check_free_threaded(

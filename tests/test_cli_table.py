@@ -75,6 +75,7 @@ _PAGES = (
     ("implementations", "explanation/universal.md"),
     ("python-order", "explanation/universal.md"),
     ("python-patches", "explanation/universal.md"),
+    ("implementation-python", "explanation/universal.md"),
     ("python", "reference/configuration.md"),
     ("platform", "reference/configuration.md"),
     ("implementation", "reference/configuration.md"),
@@ -174,20 +175,20 @@ class TestTheDeclaredTable:
         optiondefs.validate(ALL)
 
     def test_the_table_is_the_three_groups_it_is_built_from(self) -> None:
-        """Keep the 64 rows split into their declared groups."""
+        """Keep the rows split into their declared groups."""
         root = [row for row in ALL if row.is_global]
         command = [row for row in ALL if row.commands and not row.is_global]
         file_only = [row for row in ALL if not row.commands]
 
-        assert (len(root), len(command), len(file_only)) == (7, 44, 13)
-        assert len(root) + len(command) + len(file_only) == len(ALL) == 64
+        assert (len(root), len(command), len(file_only)) == (7, 45, 13)
+        assert len(root) + len(command) + len(file_only) == len(ALL) == 65
 
         keyed = [row for row in ALL if row.key]
         assert len(keyed) == 29
         assert sum(1 for row in keyed if row.cli_flag) == 16
         assert sum(1 for row in keyed if not row.commands) == 13
 
-    def test_the_sub_rows_are_the_eight_that_spell_the_two_tables(self) -> None:
+    def test_the_sub_rows_spell_the_two_tables(self) -> None:
         """A sub-row carries no key, so only ``under`` says which one it spells."""
         assert [(row.name, row.under) for row in ALL if row.under] == [
             ("python", "matrix"),
@@ -195,6 +196,7 @@ class TestTheDeclaredTable:
             ("implementations", "matrix"),
             ("python-order", "matrix"),
             ("python-patches", "matrix"),
+            ("implementation-python", "matrix"),
             ("python", "environment"),
             ("platform", "environment"),
             ("implementation", "environment"),

@@ -390,7 +390,7 @@ class MatrixKeys(
     needs=("python", "platforms"),
     docs="explanation/universal.md",
 ):
-    """``[tool.nab.matrix]``'s five keys, as the flags that set them.
+    """``[tool.nab.matrix]``'s keys, as the flags that set them.
 
     These rows carry no configuration key of their own: ``under`` names the
     one they spell, and :mod:`nab.config.subflags` assembles what they read
@@ -418,6 +418,10 @@ class MatrixKeys(
 
     python_patches = Pairs[str](
         help="pin a Python minor to one patch release, as MINOR=FULL",
+    )
+
+    implementation_python = Pairs[str](
+        help="restrict Python versions per implementation, as IMPLEMENTATION=SPEC",
     )
 
 

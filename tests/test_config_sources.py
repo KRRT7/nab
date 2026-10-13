@@ -130,6 +130,7 @@ _TABLE_PARAMS: dict[str, Any] = {
     "project_matrix_implementations": (),
     "project_matrix_python_order": None,
     "project_matrix_python_patches": (),
+    "project_matrix_implementation_python": (),
     "project_environment_python": None,
     "project_environment_platform": (),
     "project_environment_implementation": None,
@@ -1186,6 +1187,33 @@ class TestBuildCliTables:
     def test_no_matrix_flag_leaves_no_matrix_key(self) -> None:
         """A key no sub-flag set keeps whatever the file ladder resolved."""
         assert build_cli_tables(_table_params()) == {}
+
+    def test_implementation_python_cli_reads_the_full_specifier(self) -> None:
+        table = _fold(
+            project_matrix_python=">=3.10,<3.16",
+            project_matrix_platforms=("linux_x86_64",),
+            project_matrix_implementations=("cpython", "pypy"),
+            project_matrix_implementation_python=("pypy===3.11",),
+        )
+        assert table["implementation-python"] == {"pypy": "==3.11"}
+        matrix = parse_matrix(table, "--project-matrix-*")
+        assert matrix.implementation_python == {"pypy": "==3.11"}
+
+    def test_cli_restrictions_replace_the_file_mapping(self) -> None:
+        table = fold_cli_table(
+            BY_KEY["matrix"],
+            _matrix_table(project_matrix_implementation_python=("pypy===3.12",)),
+            {
+                **_FILE_MATRIX,
+                "implementation-python": {"cpython": "==3.11", "pypy": "==3.11"},
+            },
+        )
+        assert table["implementation-python"] == {"pypy": "==3.12"}
+
+    @pytest.mark.parametrize("tokens", [("pypy",), ("pypy===3.11", "pypy===3.12")])
+    def test_malformed_cli_restrictions_rejected(self, tokens: tuple[str, ...]) -> None:
+        with pytest.raises(CliTableError):
+            _matrix_table(project_matrix_implementation_python=tokens)
 
     def test_a_flag_with_no_tokens_counts_as_unwritten(self) -> None:
         """The walk stores ``()`` for a star with no token, as for an absent one."""

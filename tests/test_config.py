@@ -94,6 +94,7 @@ _TABLE_PARAMS: dict[str, object] = {
     "project_matrix_implementations": (),
     "project_matrix_python_order": None,
     "project_matrix_python_patches": (),
+    "project_matrix_implementation_python": (),
     "project_environment_python": None,
     "project_environment_platform": (),
     "project_environment_implementation": None,
@@ -4996,6 +4997,74 @@ class TestMatrix:
         body = self._matrix_body(implementations="[]")
         with pytest.raises(ConfigError, match="at least one implementation"):
             read_pyproject_config(write(tmp_path, body))
+
+    def test_implementation_python_restricts_planned_targets(
+        self, tmp_path: Path
+    ) -> None:
+        body = self._matrix_body(
+            implementations='["cpython", "pypy"]',
+            **{"implementation-python": '{ pypy = "==3.11" }'},
+        )
+        config = read_pyproject_config(write(tmp_path, body))
+        assert config.matrix is not None
+        assert config.matrix.implementation_python == {"pypy": "==3.11"}
+        assert [target.label for target in plan_targets(config)] == [
+            "py311-linux_x86_64",
+            "pp311-linux_x86_64",
+            "py311-macos_arm64",
+            "pp311-macos_arm64",
+            "py312-linux_x86_64",
+            "py312-macos_arm64",
+            "py313-linux_x86_64",
+            "py313-macos_arm64",
+        ]
+
+    def test_empty_implementation_python_keeps_the_shared_axes(
+        self, tmp_path: Path
+    ) -> None:
+        config = read_pyproject_config(
+            write(tmp_path, self._matrix_body(**{"implementation-python": "{}"}))
+        )
+        assert config.matrix is not None
+        assert config.matrix.implementation_python == {}
+        assert len(plan_targets(config)) == 6
+
+    @pytest.mark.parametrize(
+        ("restriction", "message"),
+        [
+            ('"==3.11"', "must be a table"),
+            ('{ jython = "==3.11" }', "unknown implementation"),
+            ("{ pypy = 311 }", "must be a string PEP 440 specifier"),
+            ('{ pypy = "bad" }', "must be a PEP 440 specifier"),
+            ('{ pypy = "===bad" }', "not a valid version"),
+            ('{ pypy = ">=3.11.4" }', "language .* version only"),
+            ('{ pypy = "==3.10" }', "No known Python versions"),
+        ],
+    )
+    def test_bad_implementation_python_rejected(
+        self, tmp_path: Path, restriction: str, message: str
+    ) -> None:
+        body = self._matrix_body(
+            implementations='["cpython", "pypy"]',
+            **{"implementation-python": restriction},
+        )
+        with pytest.raises(ConfigError, match=message):
+            read_pyproject_config(write(tmp_path, body))
+
+    def test_cli_can_narrow_implementations_with_file_restrictions(
+        self, tmp_path: Path
+    ) -> None:
+        body = self._matrix_body(
+            implementations='["cpython", "pypy"]',
+            **{"implementation-python": '{ pypy = "==3.11" }'},
+        )
+        config = read_pyproject_config(
+            write(tmp_path, body),
+            cli_overrides={"matrix": _cli_matrix(implementations=("cpython",))},
+        )
+        assert {
+            target.marker_env["implementation_name"] for target in plan_targets(config)
+        } == {"cpython"}
 
     def test_implementations_unknown_rejected(self, tmp_path: Path) -> None:
         body = self._matrix_body(implementations='["jython"]')

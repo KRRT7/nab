@@ -33,7 +33,7 @@ def _cache_command() -> None:
 
 
 def _config_command() -> None:
-    """``nab config``: 28 parameters."""
+    """``nab config``: 29 parameters."""
     config_command(
         ConfigWords.action,
         ConfigWords.key,
@@ -54,6 +54,7 @@ def _config_command() -> None:
         project_matrix_implementations=MatrixKeys.implementations,
         project_matrix_python_order=MatrixKeys.python_order,
         project_matrix_python_patches=MatrixKeys.python_patches,
+        project_matrix_implementation_python=MatrixKeys.implementation_python,
         project_environment_python=EnvironmentKeys.python,
         project_environment_platform=EnvironmentKeys.platform,
         project_environment_implementation=EnvironmentKeys.implementation,
@@ -67,7 +68,7 @@ def _config_command() -> None:
 
 
 def _lock() -> None:
-    """``nab lock``: 37 parameters."""
+    """``nab lock``: 38 parameters."""
     lock(
         ConfigWords.path,
         project_resolution=ProjectKeys.resolution,
@@ -87,6 +88,7 @@ def _lock() -> None:
         project_matrix_implementations=MatrixKeys.implementations,
         project_matrix_python_order=MatrixKeys.python_order,
         project_matrix_python_patches=MatrixKeys.python_patches,
+        project_matrix_implementation_python=MatrixKeys.implementation_python,
         project_environment_python=EnvironmentKeys.python,
         project_environment_platform=EnvironmentKeys.platform,
         project_environment_implementation=EnvironmentKeys.implementation,
@@ -110,7 +112,7 @@ def _lock() -> None:
 
 
 def _download() -> None:
-    """``nab download``: 33 parameters."""
+    """``nab download``: 34 parameters."""
     download(
         ConfigWords.path,
         project_resolution=ProjectKeys.resolution,
@@ -130,6 +132,7 @@ def _download() -> None:
         project_matrix_implementations=MatrixKeys.implementations,
         project_matrix_python_order=MatrixKeys.python_order,
         project_matrix_python_patches=MatrixKeys.python_patches,
+        project_matrix_implementation_python=MatrixKeys.implementation_python,
         project_environment_python=EnvironmentKeys.python,
         project_environment_platform=EnvironmentKeys.platform,
         project_environment_implementation=EnvironmentKeys.implementation,

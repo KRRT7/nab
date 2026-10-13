@@ -233,9 +233,30 @@ platforms = ["linux_x86_64"]
 implementations = ["cpython", "pypy"]
 ```
 
-Each implementation multiplies the target count (pythons x platforms x implementations). A PyPy
-target sets `platform_python_implementation = "PyPy"` / `implementation_name = "pypy"` for marker
-evaluation and accepts `ppXY-pypyXY_pp73` wheel tags instead of `cpXY`. Labels use the `pp`
+By default, each implementation uses the whole Python range. To target CPython 3.10 through 3.15 and
+only PyPy 3.11 on the same platforms, narrow PyPy's range:
+
+```toml
+[tool.nab.matrix]
+python = ">=3.10,<3.16"
+platforms = ["linux_x86_64", "macos_arm64"]
+implementations = ["cpython", "pypy"]
+
+[tool.nab.matrix.implementation-python]
+pypy = "==3.11"
+```
+
+This declares 14 targets: six CPython minors and one PyPy minor on each platform.
+`implementation-python` intersects each implementation's range with `python`; an implementation
+without an entry uses the whole range. `implementations` still selects which interpreters to
+include. `python-order` orders all selected minors together.
+
+On the command line, set the same restriction with
+`--project-matrix-implementation-python 'pypy===3.11'`. The first `=` separates `pypy` from the
+specifier `==3.11`.
+
+A PyPy target sets `platform_python_implementation = "PyPy"` / `implementation_name = "pypy"` for
+marker evaluation and accepts `ppXY-pypyXY_pp73` wheel tags instead of `cpXY`. Labels use the `pp`
 interpreter prefix (`pp311-linux_x86_64`).
 
 A CPython-only matrix leaves `implementation_name` open. A matrix with PyPy, or with more than one

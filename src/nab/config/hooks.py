@@ -242,11 +242,17 @@ def render_conflicts(value: Sequence[Any]) -> str:
 
 
 def render_matrix(value: Any) -> str:
-    """Render the matrix as its python axis and platform labels."""
+    """Render the matrix axes and any implementation-specific Python ranges."""
     if value is None:
         return "<none>"
     platforms = [p.label for p in value.platforms]
-    return f"python={value.python}, platforms={platforms}"
+    rendered = f"python={value.python}, platforms={platforms}"
+    if value.implementation_python:
+        rendered += (
+            f", implementations={list(value.implementations)}, "
+            f"implementation-python={dict(value.implementation_python)}"
+        )
+    return rendered
 
 
 def render_package_overrides(value: Sequence[Any]) -> str:
