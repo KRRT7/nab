@@ -7160,6 +7160,51 @@ class TestProgressReachesTheResolve:
 class TestMakeTransport:
     """Each HttpBackend value resolves to its corresponding transport class."""
 
+    @pytest.mark.parametrize("command", ["lock", "download"])
+    def test_cli_reports_transport_initialization_failure(
+        self,
+        command: str,
+        hermetic_roots: Path,
+        monkeypatch: pytest.MonkeyPatch,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        """A malformed proxy fails cleanly; absent and valid proxies build clients."""
+        pyproject = _make_pyproject(
+            hermetic_roots,
+            '[project]\nname = "root"\nversion = "0"\ndependencies = []\n',
+        )
+        for name in tuple(os.environ):
+            if name.lower().endswith("_proxy"):
+                monkeypatch.delenv(name)
+
+        output = hermetic_roots / ("pylock.toml" if command == "lock" else "wheels")
+        arguments = (
+            command,
+            str(pyproject),
+            "--offline",
+            "--no-cache",
+            "--no-workspace-discovery",
+            "--http-backend",
+            "httpx",
+            "--output",
+            str(output),
+        )
+        for proxy in (None, "http://proxy.example:8080"):
+            if proxy is not None:
+                monkeypatch.setenv("HTTPS_PROXY", proxy)
+            transport = _make_transport("httpx")
+            asyncio.run(transport.aclose())
+        assert capsys.readouterr().err == ""
+
+        monkeypatch.setenv("HTTPS_PROXY", "http://proxy.example:wrong")
+        assert run(arguments) == 1
+
+        captured = capsys.readouterr()
+        assert captured.out == ""
+        assert "cannot initialize httpx transport" in captured.err
+        assert "Invalid port: 'wrong'" in captured.err
+        assert "Traceback" not in captured.err
+
     @pytest.mark.parametrize(
         ("backend", "transport_type"),
         [("httpx", HttpxAsyncTransport), ("httpx2", Httpx2AsyncTransport)],
