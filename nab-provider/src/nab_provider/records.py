@@ -169,7 +169,7 @@ class _DeferredIntegrity:
     then store the same value.
     """
 
-    __slots__ = ()
+    __slots__ = ("_raw_hashes",)
 
     _raw_hashes: object
 
@@ -195,7 +195,7 @@ class _WheelIntegrity(_DeferredIntegrity):
     ``@dataclass(slots=True)`` rejects ``__slots__`` in the dataclass body.
     """
 
-    __slots__ = ("_metadata_url", "_raw_hashes", "_raw_metadata")
+    __slots__ = ("_metadata_url", "_raw_metadata")
 
     _metadata_url: str
     _raw_metadata: object
@@ -215,12 +215,6 @@ class _WheelIntegrity(_DeferredIntegrity):
             return _expand_table(self._raw_metadata)
         except AttributeError:
             return None
-
-
-class _SdistIntegrity(_DeferredIntegrity):
-    """Carries a source distribution's raw ``hashes`` table in a slot of its own."""
-
-    __slots__ = ("_raw_hashes",)
 
 
 def defer_hashes(record: WheelFile | SdistFile, table: object) -> None:
@@ -354,7 +348,7 @@ _set_wheel_size = _slot_writer(WheelFile, "size")
 _set_wheel_local_path = _slot_writer(WheelFile, "local_path")
 _set_wheel_metadata_hash = _slot_writer(WheelFile, "metadata_hash")
 
-_set_wheel_raw_hashes = _slot_writer(_WheelIntegrity, "_raw_hashes")
+_set_raw_hashes = _slot_writer(_DeferredIntegrity, "_raw_hashes")
 _set_wheel_raw_metadata = _slot_writer(_WheelIntegrity, "_raw_metadata")
 
 
@@ -376,7 +370,7 @@ def release_wheel_payload(wheel: WheelFile) -> None:
     _set_wheel_has_metadata(wheel, False)  # noqa: FBT003 - the slot's __set__ is positional-only
 
     # A deferred slot holding ``None`` reads back as one holding nothing.
-    _set_wheel_raw_hashes(wheel, None)
+    _set_raw_hashes(wheel, None)
     _set_wheel_raw_metadata(wheel, None)
 
 
@@ -411,7 +405,7 @@ def rehydrated_wheel(  # noqa: PLR0913, PLR0917 - the record's fields, in its ow
     _set_wheel_local_path(wheel, None)
 
     if isinstance(hashes, dict):
-        _set_wheel_raw_hashes(wheel, _compact_shared_table(hashes))
+        _set_raw_hashes(wheel, _compact_shared_table(hashes))
     else:
         _set_wheel_hashes(wheel, hashes)
 
@@ -424,7 +418,7 @@ def rehydrated_wheel(  # noqa: PLR0913, PLR0917 - the record's fields, in its ow
 
 
 @dataclass(frozen=True, slots=True, init=False)
-class SdistFile(_SdistIntegrity):
+class SdistFile(_DeferredIntegrity):
     """A source distribution from the Simple API.
 
     See :class:`WheelFile` for the meaning of ``hashes``, ``size`` and
@@ -477,8 +471,6 @@ _set_sdist_hashes = _slot_writer(SdistFile, "hashes")
 _set_sdist_size = _slot_writer(SdistFile, "size")
 _set_sdist_local_path = _slot_writer(SdistFile, "local_path")
 
-_set_sdist_raw_hashes = _slot_writer(_SdistIntegrity, "_raw_hashes")
-
 
 def rehydrated_sdist(
     filename: str,
@@ -504,7 +496,7 @@ def rehydrated_sdist(
     _set_sdist_local_path(sdist, None)
 
     if isinstance(hashes, dict):
-        _set_sdist_raw_hashes(sdist, _compact_shared_table(hashes))
+        _set_raw_hashes(sdist, _compact_shared_table(hashes))
     else:
         _set_sdist_hashes(sdist, hashes)
 
