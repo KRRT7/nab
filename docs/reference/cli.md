@@ -215,7 +215,8 @@ See {ref}`Configuration sources <layered-configuration-sources>` for `nab.toml` 
 ## Exit codes
 
 - Success: `0`.
-- Failed command or lock check: `1`.
-- Invalid usage or output settings: `2`.
+- Failed command or lock check, including invalid lock output filenames and unsupported `--locked`
+  output combinations: `1`.
+- Argument parsing or global output-control errors: `2`.
 - Lost output through writing, flushing, or a closed stream: `120`.
 - Interrupted with Ctrl-C: `130`.
