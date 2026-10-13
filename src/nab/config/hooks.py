@@ -249,9 +249,11 @@ def render_matrix(value: Any) -> str:
     platforms = [p.label for p in value.platforms]
     rendered = f"python={value.python}, platforms={platforms}"
     if value.implementation_overrides:
+        overrides = {
+            "implementations": _implementation_values(value.implementation_overrides)
+        }
         rendered += (
-            f", implementations={list(value.implementations)}, "
-            f"implementation={_implementation_values(value.implementation_overrides)}"
+            f", implementations={list(value.implementations)}, overrides={overrides}"
         )
     return rendered
 

@@ -1197,10 +1197,10 @@ class TestBuildCliTables:
             ),
             {
                 **_FILE_MATRIX,
-                "implementation": overrides,
+                "overrides": {"implementations": overrides},
             },
         )
-        assert table["implementation"] == overrides
+        assert table["overrides"] == {"implementations": overrides}
         matrix = parse_matrix(table, "--project-matrix-*")
         assert matrix.implementation_overrides is not None
         assert matrix.implementation_overrides["pypy"].python == "==3.11"

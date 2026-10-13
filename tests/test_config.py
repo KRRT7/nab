@@ -1631,7 +1631,11 @@ class TestRequiresPython:
     @pytest.mark.parametrize(
         ("shared_python", "override", "key"),
         [
-            ("==3.12", 'python = "==3.11"\n', "matrix.implementation.pypy.python"),
+            (
+                "==3.12",
+                'python = "==3.11"\n',
+                "matrix.overrides.implementations.pypy.python",
+            ),
             ("==3.11", 'platforms = ["windows_amd64"]\n', "matrix.python"),
             ("==3.11", "", "matrix.python"),
         ],
@@ -1644,7 +1648,7 @@ class TestRequiresPython:
             '[tool.nab]\nmode = "universal"\nrequires-python = ">=3.12"\n'
             f'[tool.nab.matrix]\npython = "{shared_python}"\n'
             'platforms = ["linux_x86_64"]\nimplementations = ["pypy"]\n'
-            "[tool.nab.matrix.implementation.pypy]\n"
+            "[tool.nab.matrix.overrides.implementations.pypy]\n"
         )
         path = write(tmp_path, body + override)
         with pytest.raises(ConfigError) as exc:
@@ -5040,7 +5044,7 @@ class TestMatrix:
     ) -> None:
         body = self._matrix_body(
             implementations='["cpython", "pypy"]',
-            implementation='{ pypy = { python = "==3.10" } }',
+            overrides='{ implementations = { pypy = { python = "==3.10" } } }',
         )
         config = read_pyproject_config(write(tmp_path, body))
         assert config.matrix is not None
@@ -5058,15 +5062,17 @@ class TestMatrix:
             "py313-macos_arm64",
         ]
 
-    @pytest.mark.parametrize("overrides", ["{}", "{ pypy = {} }"])
+    @pytest.mark.parametrize(
+        "overrides",
+        ["{}", "{ implementations = {} }", "{ implementations = { pypy = {} } }"],
+    )
     def test_empty_implementation_overrides_keep_the_shared_axes(
         self, tmp_path: Path, overrides: str
     ) -> None:
         config = read_pyproject_config(
-            write(tmp_path, self._matrix_body(implementation=overrides))
+            write(tmp_path, self._matrix_body(overrides=overrides))
         )
         assert config.matrix is not None
-        assert config.matrix.implementation_overrides is not None
         assert len(plan_targets(config)) == 6
 
     @pytest.mark.parametrize(
@@ -5095,7 +5101,7 @@ class TestMatrix:
     ) -> None:
         body = self._matrix_body(
             implementations='["cpython", "pypy"]',
-            implementation=overrides,
+            overrides="{ implementations = " + overrides + " }",
         )
         with pytest.raises(ConfigError, match=message):
             read_pyproject_config(write(tmp_path, body))
@@ -5105,7 +5111,7 @@ class TestMatrix:
     ) -> None:
         body = self._matrix_body(
             implementations='["cpython", "pypy"]',
-            implementation='{ pypy = { python = "==3.11" } }',
+            overrides='{ implementations = { pypy = { python = "==3.11" } } }',
         )
         config = read_pyproject_config(
             write(tmp_path, body),
@@ -5114,6 +5120,34 @@ class TestMatrix:
         assert {
             target.marker_env["implementation_name"] for target in plan_targets(config)
         } == {"cpython"}
+
+    def test_former_singular_implementation_table_is_rejected(
+        self, tmp_path: Path
+    ) -> None:
+        body = self._matrix_body(
+            implementations='["cpython", "pypy"]',
+            implementation='{ pypy = { python = "==3.11" } }',
+        )
+        with pytest.raises(ConfigError, match="unknown keys.*implementation"):
+            read_pyproject_config(write(tmp_path, body))
+
+    @pytest.mark.parametrize(
+        ("overrides", "message"),
+        [
+            ('"pypy"', "overrides must be a table"),
+            ("[]", "overrides must be a table"),
+            ("{ implementation = {} }", "overrides has unknown keys"),
+            ("{ platforms = {} }", "overrides has unknown keys"),
+            ("{ pypy = {} }", "overrides has unknown keys"),
+        ],
+    )
+    def test_override_container_rejects_invalid_shapes_and_categories(
+        self, tmp_path: Path, overrides: str, message: str
+    ) -> None:
+        with pytest.raises(ConfigError, match=message):
+            read_pyproject_config(
+                write(tmp_path, self._matrix_body(overrides=overrides))
+            )
 
     def test_implementations_unknown_rejected(self, tmp_path: Path) -> None:
         body = self._matrix_body(implementations='["jython"]')

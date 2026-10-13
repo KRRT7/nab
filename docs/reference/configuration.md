@@ -665,14 +665,14 @@ python-patches = { "3.11" = "3.11.4" }
 The matrix has three axes. Without implementation overrides, nab resolves the full cross product:
 the example above declares 3 pythons, 2 platforms and 2 implementations, so it plans 12 targets.
 
-| Key               | Default       | Meaning                                                                        |
-| ----------------- | ------------- | ------------------------------------------------------------------------------ |
-| `python`          | required      | A PEP 440 range like `>=3.11,<3.14`, expanded into one target per minor        |
-| `platforms`       | required      | The platforms to model; a bare id, or a table of the tag knobs below           |
-| `implementations` | `["cpython"]` | The interpreter implementations to model: `"cpython"`, `"pypy"`                |
-| `implementation`  | none          | Overrides keyed by implementation name, with optional `python` and `platforms` |
-| `python-order`    | `"asc"`       | Cross-target alignment direction                                               |
-| `python-patches`  | none          | Pins a minor to one patch release, resolved whole instead of split into slices |
+| Key               | Default       | Meaning                                                                             |
+| ----------------- | ------------- | ----------------------------------------------------------------------------------- |
+| `python`          | required      | A PEP 440 range like `>=3.11,<3.14`, expanded into one target per minor             |
+| `platforms`       | required      | The platforms to model; a bare id, or a table of the tag knobs below                |
+| `implementations` | `["cpython"]` | The interpreter implementations to model: `"cpython"`, `"pypy"`                     |
+| `overrides`       | none          | Keyed bodies under `implementations.<name>`, with optional `python` and `platforms` |
+| `python-order`    | `"asc"`       | Cross-target alignment direction                                                    |
+| `python-patches`  | none          | Pins a minor to one patch release, resolved whole instead of split into slices      |
 
 `python-order` sets the alignment direction: `asc` mirrors uv's `fork-strategy=fewest`, `desc`
 mirrors `fork-strategy=requires-python`.
@@ -683,9 +683,9 @@ mirrors `fork-strategy=requires-python`.
 empty list are each a config error. See [Universal resolution](../explanation/universal.md) for how
 the axis is modelled and what it puts on the lockfile markers.
 
-`[tool.nab.matrix.implementation.<name>]` replaces `python` or `platforms` for one implementation.
-Omitted fields inherit the shared matrix values. For CPython 3.10 through 3.15 on Linux and Apple
-Silicon macOS, and PyPy 3.11 on Windows and musl Linux:
+`[tool.nab.matrix.overrides.implementations.<name>]` replaces `python` or `platforms` for one
+implementation. Omitted fields inherit the shared matrix values. For CPython 3.10 through 3.15 on
+Linux and Apple Silicon macOS, and PyPy 3.11 on Windows and musl Linux:
 
 ```toml
 [tool.nab.matrix]
@@ -693,7 +693,7 @@ python = ">=3.10,<3.16"
 platforms = ["linux_x86_64", "macos_arm64"]
 implementations = ["cpython", "pypy"]
 
-[tool.nab.matrix.implementation.pypy]
+[tool.nab.matrix.overrides.implementations.pypy]
 python = "==3.11"
 platforms = [
     "windows_amd64",
@@ -835,9 +835,9 @@ nab lock --project-matrix-platforms macos_arm64
 ```
 
 The Python and platform flags set the shared defaults. An explicit value in
-`[tool.nab.matrix.implementation.<name>]` keeps precedence over its shared default. Declare these
-keyed override bodies in `pyproject.toml` or the project-directory `nab.toml`; they have no CLI
-flags. To select only CPython from a file declaring both implementations:
+`[tool.nab.matrix.overrides.implementations.<name>]` keeps precedence over its shared default.
+Declare these keyed override bodies in `pyproject.toml` or the project-directory `nab.toml`; they
+have no CLI flags. To select only CPython from a file declaring both implementations:
 
 ```bash
 nab lock --project-matrix-implementations cpython

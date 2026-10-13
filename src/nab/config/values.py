@@ -1944,7 +1944,7 @@ _MATRIX_KEYS = frozenset(
         "python-order",
         "python-patches",
         "implementations",
-        "implementation",
+        "overrides",
     }
 )
 
@@ -1984,8 +1984,8 @@ def parse_matrix(
         raise SourceConfigError(msg)
     patches = _parse_python_patches(value.get("python-patches"), where)
     implementations = _parse_implementations(value.get("implementations"), where)
-    implementation_overrides = _parse_implementation_overrides(
-        value.get("implementation"), where, table
+    implementation_overrides = _parse_matrix_overrides(
+        value.get("overrides"), where, table
     )
     config = MatrixConfig(
         python=python,
@@ -2010,13 +2010,30 @@ def _parse_matrix_platform_axis(value: object, where: str) -> tuple[PlatformSpec
     return platforms
 
 
+def _parse_matrix_overrides(
+    value: object, where: str, table: str
+) -> dict[str, ImplementationOverride] | None:
+    """Read the implementation category from the matrix override container."""
+    if value is None:
+        return None
+    label = f"{where}.overrides"
+    if not isinstance(value, dict):
+        msg = f"{label} must be a table"
+        raise SourceConfigError(msg)
+    unknown = sorted(set(value) - {"implementations"})
+    if unknown:
+        msg = f"{label} has unknown keys: {unknown!r}; expected ['implementations']"
+        raise SourceConfigError(msg)
+    return _parse_implementation_overrides(value.get("implementations"), where, table)
+
+
 def _parse_implementation_overrides(
     value: object, where: str, table: str
 ) -> dict[str, ImplementationOverride] | None:
     """Read keyed implementation bodies using the shared matrix axis parsers."""
     if value is None:
         return None
-    label = f"{where}.implementation"
+    label = f"{where}.overrides.implementations"
     if not isinstance(value, dict):
         msg = f"{label} must be a table keyed by implementation name"
         raise SourceConfigError(msg)
@@ -2055,7 +2072,10 @@ def _parse_implementation_body(
             raise SourceConfigError(msg)
         python = raw_python
         _validate_matrix_python(
-            python, where, table, key=f"implementation.{implementation}.python"
+            python,
+            where,
+            table,
+            key=f"overrides.implementations.{implementation}.python",
         )
 
     platforms = (

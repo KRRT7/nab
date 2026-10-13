@@ -242,15 +242,15 @@ python = ">=3.10,<3.16"
 platforms = ["linux_x86_64", "macos_arm64"]
 implementations = ["cpython", "pypy"]
 
-[tool.nab.matrix.implementation.pypy]
+[tool.nab.matrix.overrides.implementations.pypy]
 python = "==3.11"
 ```
 
 This declares 14 targets: six CPython minors and one PyPy minor on each platform. The keyed
-`implementation` table replaces `python` or `platforms` for one interpreter; omitted fields inherit
-the shared matrix values. For example, adding `platforms = ["linux_x86_64"]` to the PyPy table
-restricts PyPy to Linux while CPython keeps both platforms. An override may also add Python minors
-or platform IDs outside the shared defaults.
+`overrides.implementations` table replaces `python` or `platforms` for one interpreter; omitted
+fields inherit the shared matrix values. For example, adding `platforms = ["linux_x86_64"]` to the
+PyPy table restricts PyPy to Linux while CPython keeps both platforms. An override may also add
+Python minors or platform IDs outside the shared defaults.
 
 `implementations` still selects which interpreters to include. `python-order` orders all selected
 minors together. Declare implementation overrides in the project file; the shared-axis CLI flags
@@ -278,8 +278,8 @@ which wheels the target can install.
 ### Marker variables
 
 Every PEP 508 environment variable gets a value in every target, so no marker ever evaluates against
-a missing key. The table shows each target's effective axes, including any `implementation.<name>`
-overrides, and fixed defaults.
+a missing key. The table shows each target's effective axes, including any
+`overrides.implementations.<name>` overrides, and fixed defaults.
 
 | Marker variable                  | Set by                           | Default                                                                   |
 | -------------------------------- | -------------------------------- | ------------------------------------------------------------------------- |

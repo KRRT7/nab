@@ -799,7 +799,7 @@ def _check_requires_python_admits_target(
     if matrix is not None:
         override = (matrix.implementation_overrides or {}).get(target.implementation)
         key = (
-            f"matrix.implementation.{target.implementation}.python"
+            f"matrix.overrides.implementations.{target.implementation}.python"
             if override is not None and override.python is not None
             else "matrix.python"
         )

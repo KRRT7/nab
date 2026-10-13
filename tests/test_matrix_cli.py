@@ -38,7 +38,7 @@ def test_lock_declares_only_selected_interpreter_targets(
         + f'[{matrix}]\npython = ">=3.10,<3.16"\n'
         + 'platforms = ["linux_x86_64", "macos_arm64"]\n'
         + 'implementations = ["cpython", "pypy"]\n'
-        + f'[{matrix}.implementation.pypy]\npython = "==3.11"\n'
+        + f'[{matrix}.overrides.implementations.pypy]\npython = "==3.11"\n'
         + 'platforms = ["linux_x86_64"]\n'
     )
     if declaration == "pyproject":
@@ -52,7 +52,7 @@ def test_lock_declares_only_selected_interpreter_targets(
     rendered = capsys.readouterr().out
     assert "implementations=['cpython', 'pypy']" in rendered
     assert (
-        "implementation={'pypy': {'python': '==3.11', 'platforms': ['linux_x86_64']}}"
+        "overrides={'implementations': {'pypy': {'python': '==3.11', 'platforms': ['linux_x86_64']}}}"
         in rendered
     )
 
@@ -112,11 +112,14 @@ def test_lock_declares_only_selected_interpreter_targets(
 @pytest.mark.parametrize(
     ("body", "expected"),
     [
-        ("", "implementation={'pypy': {}}"),
-        ('python = "==3.11"\n', "implementation={'pypy': {'python': '==3.11'}}"),
+        ("", "overrides={'implementations': {'pypy': {}}}"),
+        (
+            'python = "==3.11"\n',
+            "overrides={'implementations': {'pypy': {'python': '==3.11'}}}",
+        ),
         (
             'platforms = ["windows_amd64"]\n',
-            "implementation={'pypy': {'platforms': ['windows_amd64']}}",
+            "overrides={'implementations': {'pypy': {'platforms': ['windows_amd64']}}}",
         ),
     ],
 )
@@ -130,7 +133,7 @@ def test_config_inspection_shows_only_explicit_implementation_fields(
         '[tool.nab]\nmode = "universal"\n'
         '[tool.nab.matrix]\npython = "==3.12"\n'
         'platforms = ["linux_x86_64"]\nimplementations = ["cpython", "pypy"]\n'
-        "[tool.nab.matrix.implementation.pypy]\n" + body,
+        "[tool.nab.matrix.overrides.implementations.pypy]\n" + body,
         encoding="utf-8",
     )
     assert run(["config", "get", "matrix", "--path", str(project)]) == 0
