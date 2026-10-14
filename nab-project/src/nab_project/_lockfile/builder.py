@@ -21,6 +21,7 @@ import tomli
 from nab_provider._vendor.packaging.pylock import Pylock, PylockValidationError
 from nab_provider._vendor.packaging.specifiers import SpecifierSet
 from nab_provider._vendor.packaging.utils import canonicalize_name
+from nab_provider.digest import is_hex_digest
 from nab_provider.extra_keys import split_extra
 from nab_provider.iso8601 import parse_iso_datetime
 from nab_provider.metadata import validate_specifier_versions
@@ -68,6 +69,7 @@ __all__ = [
     "read_lockfile_packages",
     "require_artifact_hashes",
     "strip_userinfo",
+    "validate_artifact_hashes",
 ]
 
 _Artifact = TypeVar("_Artifact", "WheelArtifact", "SdistArtifact")
@@ -736,6 +738,18 @@ def require_artifact_hashes(lock_input: LockInput) -> None:
                         f"{list(ACCEPTED_HASH_ALGORITHMS)!r})"
                     )
                     raise MissingHashError(msg)
+
+
+def validate_artifact_hashes(
+    artifact: str, hashes: tuple[tuple[str, str], ...]
+) -> None:
+    """Raise ``LockValidationError`` for empty or non-hexadecimal digests."""
+    from ..lockfile import LockValidationError
+
+    for algorithm, digest in hashes:
+        if not is_hex_digest(digest):
+            msg = f"{artifact}: {algorithm} digest must be non-empty hexadecimal text"
+            raise LockValidationError(msg)
 
 
 def _common_requires_python(files: Iterable[WheelFile | SdistFile]) -> str | None:

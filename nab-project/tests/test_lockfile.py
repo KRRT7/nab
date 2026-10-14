@@ -4325,6 +4325,121 @@ class TestMissingHashFormatAware:
             write_requirements_with_hashes(_lock_from(lock))
 
 
+def _pin_with_hashes(kind: str, hashes: tuple[tuple[str, str], ...]) -> PinShape:
+    """Give one artefact the supplied hashes while keeping sibling artefacts valid."""
+    if kind == "archive":
+        return ArchivePin(
+            name="foo",
+            version="1.0",
+            url="https://example.com/foo.tar.gz",
+            hashes=hashes,
+        )
+    pin = _index_pin()
+    if kind == "wheel":
+        pin.wheels[0].hashes = hashes
+    else:
+        assert kind == "sdist"
+        assert pin.sdist is not None
+        pin.sdist.hashes = hashes
+    return pin
+
+
+@pytest.mark.parametrize(
+    ("writer", "kind"),
+    [
+        (write_lock, "wheel"),
+        (write_lock, "sdist"),
+        (write_lock, "archive"),
+        (write_requirements_with_hashes, "wheel"),
+        (write_requirements_with_hashes, "sdist"),
+        (write_requirements_with_hashes, "archive"),
+        (write_requirements_without_hashes, "archive"),
+    ],
+)
+class TestPublishedDigestValidation:
+    @pytest.mark.parametrize("algorithm", ["sha256", "sha384", "sha512"])
+    @pytest.mark.parametrize("digest", ["", "not-a-digest", "ab cd", "abcd\n"])
+    def test_invalid_digest_preserves_destination(
+        self,
+        tmp_path: Path,
+        writer: Callable[..., str],
+        kind: str,
+        algorithm: str,
+        digest: str,
+    ) -> None:
+        pin = _pin_with_hashes(kind, ((algorithm, digest),))
+        lock_input = LockInput(targets=_one({"foo": pin}))
+        destination = tmp_path / "pylock.toml"
+        destination.write_bytes(b"existing destination\n")
+
+        with pytest.raises(LockValidationError, match="non-empty hexadecimal"):
+            writer(lock_input, output_path=destination)
+
+        assert destination.read_bytes() == b"existing destination\n"
+        assert list(tmp_path.iterdir()) == [destination]
+
+    def test_invalid_secondary_digest_is_rejected(
+        self, tmp_path: Path, writer: Callable[..., str], kind: str
+    ) -> None:
+        pin = _pin_with_hashes(kind, (("sha256", "a" * 64), ("sha512", "not-a-digest")))
+        destination = tmp_path / "pylock.toml"
+
+        with pytest.raises(LockValidationError, match="sha512"):
+            writer(LockInput(targets=_one({"foo": pin})), output_path=destination)
+
+        assert not destination.exists()
+        assert not list(tmp_path.iterdir())
+
+    @pytest.mark.parametrize(
+        ("algorithm", "digest"),
+        [
+            pytest.param(algorithm, digit * width, id=f"{algorithm}-{case}")
+            for algorithm, width in [("sha256", 64), ("sha384", 96), ("sha512", 128)]
+            for digit, case in [("a", "lowercase"), ("A", "uppercase")]
+        ]
+        + [
+            pytest.param("sha256", "a", id="short-hex"),
+            pytest.param("sha512", "AbC123", id="mixed-case-short-hex"),
+        ],
+    )
+    def test_hex_digest_is_preserved(
+        self,
+        tmp_path: Path,
+        writer: Callable[..., str],
+        kind: str,
+        algorithm: str,
+        digest: str,
+    ) -> None:
+        pin = _pin_with_hashes(kind, ((algorithm, digest),))
+        destination = tmp_path / "pylock.toml"
+        text = writer(LockInput(targets=_one({"foo": pin})), output_path=destination)
+
+        assert destination.read_text(encoding="utf-8") == text
+
+        if writer is write_lock:
+            package = tomllib.loads(text)["packages"][0]
+            artifact = package["wheels"][0] if kind == "wheel" else package[kind]
+            assert artifact["hashes"] == {algorithm: digest}
+        elif kind == "archive":
+            assert (
+                text.strip()
+                == f"foo @ https://example.com/foo.tar.gz#{algorithm}={digest}"
+            )
+        else:
+            sibling_digest = ("b" if kind == "wheel" else "a") * 64
+            expected = [f"{algorithm}:{digest}", f"sha256:{sibling_digest}"]
+            assert re.findall(r"--hash=(\S+)", text) == sorted(expected)
+
+
+@pytest.mark.parametrize("kind", ["wheel", "sdist"])
+def test_without_hashes_ignores_unemitted_index_digests(kind: str) -> None:
+    pin = _pin_with_hashes(kind, (("sha256", "not-a-digest"),))
+    assert (
+        write_requirements_without_hashes(LockInput(targets=_one({"foo": pin})))
+        == "foo==1.0\n"
+    )
+
+
 class TestDirectoryFields:
     """PEP 751 ``packages.directory`` editable + subdirectory emission."""
 
