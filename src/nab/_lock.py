@@ -107,7 +107,7 @@ from .flagtypes import (  # noqa: TC001 - get_type_hints resolves these at runti
 from .output import ProgressReporter, printer
 
 if TYPE_CHECKING:
-    from collections.abc import Callable, Iterable, Mapping, Sequence
+    from collections.abc import Callable, Generator, Iterable, Mapping, Sequence
 
     from nab_project.inputs import ResolveInputs
     from nab_provider.target import ResolveTarget
@@ -1036,20 +1036,15 @@ class _RenderedFile(NamedTuple):
 
 
 def _write_requirements_files(rendered: list[_RenderedFile]) -> None:
-    """Write every rendered tuple to its path, or none of them.
-
-    Each text is staged beside its destination and moved into place only
-    once every stage is on disk, so an unwritable path fails before any
-    file has been replaced.
-    """
+    """Stage every rendered file before replacing any destination."""
     staged: list[tuple[Path, _RenderedFile]] = []
     try:
         for item in rendered:
-            tmp = _stage_path(item.path)
-            staged.append((tmp, item))
+            with _stage_path(item.path) as tmp:
+                staged.append((tmp, item))
             tmp.write_text(item.text, encoding="utf-8")
             tmp.chmod(_destination_mode(item.path))
-    except (OSError, UnicodeEncodeError):
+    except BaseException:
         for tmp, _ in staged:
             _discard(tmp)
         raise
@@ -1061,21 +1056,23 @@ def _write_requirements_files(rendered: list[_RenderedFile]) -> None:
         )
 
 
-def _stage_path(output: Path) -> Path:
-    """Create an empty file beside ``output`` to stage its text in.
+@contextlib.contextmanager
+def _stage_path(output: Path) -> Generator[Path, None, None]:
+    """Create a stage and discard it if closing or registering it fails.
 
-    Staging in the destination's directory keeps the later rename on one
-    filesystem, so it is atomic.  A directory at ``output`` is refused
-    here because the rename would only refuse it once earlier files had
-    already been replaced.
+    Stage beside the destination for atomic renames; refuse directory destinations.
     """
     if output.is_dir():
         raise IsADirectoryError(errno.EISDIR, os.strerror(errno.EISDIR), str(output))
     fd, name = tempfile.mkstemp(
         dir=output.parent, prefix=f"{output.name}.", suffix=".tmp"
     )
-    os.close(fd)
-    return Path(name)
+    try:
+        os.close(fd)
+        yield Path(name)
+    except BaseException:
+        _discard(Path(name))
+        raise
 
 
 def _destination_mode(output: Path) -> int:
