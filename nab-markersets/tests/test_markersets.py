@@ -170,6 +170,17 @@ def test_second_round_removes_what_the_first_round_made_removable() -> None:
     )
 
 
+def test_within_a_version_complement() -> None:
+    # No marker string spells the universe, which is no reason to refuse a
+    # question that is decidable over it.
+    within = ~ms('python_version < "3.10"')
+    marker = ms('python_version >= "3.10" and sys_platform == "linux"')
+    assert marker.equivalent_within(ms('sys_platform == "linux"'), within) is True
+    assert marker.simplify(within=within).to_marker_string() == (
+        'sys_platform == "linux"'
+    )
+
+
 def test_within_empty_raises() -> None:
     with pytest.raises(ValueError, match="empty set"):
         ms(SPAN).simplify(within=MarkerSet.empty())
@@ -330,6 +341,21 @@ ORACLE_TRIPLES = [
         '"5.10.0" in platform_release or python_version >= "3.12"',
         'python_version >= "3.12"',
         _u('platform_release == "5.10"'),
+    ),
+    # A version complement has no NNF, so these universes split on their own
+    # top-level ``or`` instead.
+    (
+        'python_version >= "3.10"',
+        'python_version >= "3.10" or sys_platform == "linux"',
+        (~ms('python_version < "3.10"'))._tree,
+    ),
+    (
+        'sys_platform == "linux" and python_version >= "3.10"',
+        'sys_platform == "linux"',
+        (
+            ms('sys_platform == "linux"') & ~ms('python_version < "3.10"')
+            | ms('sys_platform == "win32"')
+        )._tree,
     ),
 ]
 
