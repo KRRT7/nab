@@ -1784,12 +1784,26 @@ def _row_pins(disjunct: Formula) -> dict[str, str]:
     return pins
 
 
+def _universe_disjuncts(universe: Formula) -> tuple[Formula, ...]:
+    """Return a universe's top-level disjuncts, in NNF where it has one.
+
+    NNF exposes the disjuncts a complement hides, but a version complement has
+    no NNF. The rows are only a split of the universe, so the tree itself
+    stands in for one, split on whatever top-level ``or`` it carries: any split
+    of a union is sound, and the pins a top-level conjunct entails do not
+    depend on the normal form.
+    """
+    try:
+        node = to_nnf(universe)
+    except UnserializableMarkerSet:
+        node = universe
+    return node.children if isinstance(node, OrNode) else (node,)
+
+
 def _decompose_rows(universe: Formula) -> list[_Row]:
-    """Split a universe into rows: each top-level NNF disjunct with its pins."""
-    nnf = to_nnf(universe)
-    disjuncts = nnf.children if isinstance(nnf, OrNode) else (nnf,)
+    """Split a universe into rows: each top-level disjunct with its pins."""
     rows: list[_Row] = []
-    for disjunct in disjuncts:
+    for disjunct in _universe_disjuncts(universe):
         pins = _row_pins(disjunct)
         rows.append(_Row(pins, restrict_tree(disjunct, pins)))
     return rows
@@ -1824,10 +1838,11 @@ def universe_is_empty(
     universe: Formula, max_cells: int, store: Memo | None = None
 ) -> bool:
     """Whether a universe admits no environment: every top-level disjunct is empty."""
-    nnf = to_nnf(universe)
-    disjuncts = nnf.children if isinstance(nnf, OrNode) else (nnf,)
     shared = Memo() if store is None else store
-    return all(is_empty(disjunct, max_cells, shared) for disjunct in disjuncts)
+    return all(
+        is_empty(disjunct, max_cells, shared)
+        for disjunct in _universe_disjuncts(universe)
+    )
 
 
 def equivalent_within_rows(
