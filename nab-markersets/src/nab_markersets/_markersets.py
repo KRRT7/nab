@@ -1261,6 +1261,8 @@ def guarded_product_size(sizes: Iterable[int], max_cells: int) -> int:
 def prepare_environment(env: Mapping[str, object]) -> Mapping[str, object]:
     """Repair legacy CPython full versions for evaluation and restriction."""
     full = env.get("python_full_version")
+    if full is None or full == "":
+        return env
     if isinstance(full, str) and full.endswith("+"):
         return {**env, "python_full_version": f"{full}local"}
     return env

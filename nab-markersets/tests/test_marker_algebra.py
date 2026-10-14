@@ -40,6 +40,14 @@ def ms(text: str) -> MarkerSet:
 # --------------------------------------------------------------- acceptance
 
 
+@pytest.mark.parametrize("full", [None, ""])
+def test_prepare_environment_preserves_values_when_full_is_absent_or_empty(
+    full: str | None,
+) -> None:
+    env = {"python_full_version": full, "sys_platform": "linux"}
+    assert _markersets.prepare_environment(env) is env
+
+
 @pytest.mark.parametrize("full", ["3.13.2+", "3.15.0a8+", "3.15.0a8+dev"])
 @pytest.mark.parametrize("include_minor", [False, True])
 @pytest.mark.parametrize(
