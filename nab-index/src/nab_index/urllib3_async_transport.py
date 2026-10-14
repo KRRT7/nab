@@ -14,7 +14,7 @@ import json as _json
 import ssl
 import threading
 import time
-from typing import TYPE_CHECKING, Any, Final
+from typing import TYPE_CHECKING, Any, Final, cast
 from urllib.parse import urljoin
 
 import truststore
@@ -35,6 +35,7 @@ from .transport import (
 
 if TYPE_CHECKING:
     from collections.abc import Mapping
+    from io import BufferedReader
 
 __all__ = [
     "Urllib3AsyncTransport",
@@ -70,6 +71,22 @@ class _SSLContext(truststore.SSLContext):
 _FINAL_STATUS_MIN: Final = 200
 
 
+class _HeaderReader:
+    """Reject EOF while the stdlib parser reads status and header lines."""
+
+    def __init__(self, reader: BufferedReader) -> None:
+        self._reader = reader
+
+    def readline(self, limit: int = -1) -> bytes:
+        line = self._reader.readline(limit)
+        if not line:
+            raise http.client.IncompleteRead(line)
+        return line
+
+    def close(self) -> None:
+        self._reader.close()
+
+
 class _FinalStatusResponse(http.client.HTTPResponse):
     """``http.client`` response that reads past 1xx informational responses.
 
@@ -81,10 +98,21 @@ class _FinalStatusResponse(http.client.HTTPResponse):
 
     @override
     def begin(self) -> None:
-        super().begin()
-        while self.status < _FINAL_STATUS_MIN:
-            self.headers = None  # type: ignore[assignment]  # ty: ignore[invalid-assignment]
+        reader = self.fp
+        # begin() uses only readline() and close() on its buffered stream.
+        guarded_reader = cast("BufferedReader", _HeaderReader(reader))
+        self.fp = guarded_reader
+        try:
             super().begin()
+            while self.status < _FINAL_STATUS_MIN:
+                self.headers = None  # type: ignore[assignment]  # ty: ignore[invalid-assignment]
+                super().begin()
+        except BaseException:
+            if self.fp is guarded_reader:
+                self.fp = reader
+            raise
+        else:
+            self.fp = reader
 
 
 # urllib3 picks its pool class from the manager and its connection class from
