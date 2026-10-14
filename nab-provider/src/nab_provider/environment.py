@@ -52,4 +52,8 @@ def host_environment(
     env_source: EnvironmentSource = default_environment,
 ) -> dict[str, str]:
     """Return the host's PEP 508 environment, keeping only string-valued entries."""
-    return {key: value for key, value in env_source().items() if isinstance(value, str)}
+    env = {key: value for key, value in env_source().items() if isinstance(value, str)}
+    # Legacy CPython source builds report an empty local version segment.
+    if env.get("python_full_version", "").endswith("+"):
+        env["python_full_version"] += "local"
+    return env

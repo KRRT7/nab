@@ -2272,7 +2272,7 @@ class TestEnvironment:
         [
             ("3.14rc1", "3.14.0rc1"),
             ("3.14a1", "3.14.0a1"),
-            ("3.14.post1", "3.14.0.post1"),
+            ("3.14.dev0", "3.14.0.dev0"),
             ("3.14+local", "3.14.0+local"),
         ],
     )
@@ -6662,3 +6662,31 @@ class TestPyPyAbiConfiguration:
         )
         with pytest.raises(ConfigError, match="pypy-abi requires"):
             read_pyproject_config(path)
+
+
+@pytest.mark.parametrize("value", ["1!3.12.0", "3.12.0.post1", "3.12.0.1"])
+@pytest.mark.parametrize(
+    "table",
+    [
+        "environment",
+        "marker-environment",
+        "matrix",
+    ],
+)
+def test_unsupported_python_version_names_its_config(
+    tmp_path: Path, value: str, table: str
+) -> None:
+    if table == "environment":
+        body = f'[tool.nab.environment]\npython = "{value}"\n'
+    elif table == "marker-environment":
+        body = f'[tool.nab.marker-environment]\npython_full_version = "{value}"\n'
+    else:
+        body = (
+            '[tool.nab.matrix]\npython = "==3.12"\nplatforms = ["linux_x86_64"]\n'
+            f'python-patches = {{"3.12" = "{value}"}}\n'
+        )
+    pyproject = write(tmp_path, body)
+    with pytest.raises(ConfigError, match="without an epoch") as exc:
+        read_pyproject_config(pyproject)
+    assert table in str(exc.value)
+    assert value in str(exc.value)

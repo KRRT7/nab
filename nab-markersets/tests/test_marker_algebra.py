@@ -40,6 +40,45 @@ def ms(text: str) -> MarkerSet:
 # --------------------------------------------------------------- acceptance
 
 
+@pytest.mark.parametrize("full", [None, ""])
+def test_prepare_environment_preserves_values_when_full_is_absent_or_empty(
+    full: str | None,
+) -> None:
+    env = {"python_full_version": full, "sys_platform": "linux"}
+    assert _markersets.prepare_environment(env) is env
+
+
+@pytest.mark.parametrize("full", ["3.13.2+", "3.15.0a8+", "3.15.0a8+dev"])
+@pytest.mark.parametrize("include_minor", [False, True])
+@pytest.mark.parametrize(
+    "text",
+    [
+        'python_version >= "3.9"',
+        'python_version < "3.14"',
+        'python_full_version >= "3.9"',
+        'python_full_version < "3.14"',
+        '"3.9" <= python_full_version',
+        'python_full_version == "3.13.2"',
+        'python_full_version != "3.13.2"',
+        '"local" in python_full_version',
+        'python_full_version in "3.13.2+local"',
+    ],
+)
+def test_source_build_environment(full: str, text: str, *, include_minor: bool) -> None:
+    env = {"python_full_version": full}
+    if include_minor:
+        env["python_version"] = ".".join(full.split(".")[:2])
+    original = dict(env)
+    expected = Marker(text).evaluate(
+        {**env, "python_version": ".".join(full.split(".")[:2])}
+    )
+    marker = ms(text)
+    assert marker.evaluate(env) is expected
+    assert marker.restrict(env).is_full() is expected
+    assert marker.restrict(env).is_empty() is not expected
+    assert env == original
+
+
 def test_onnxruntime_extras_disjoint() -> None:
     a = ms('"cpu" in extras and "gpu" not in extras')
     b = ms('"gpu" in extras and "cpu" not in extras')
@@ -92,14 +131,14 @@ def test_exclusive_above_prerelease_literal() -> None:
 
 
 def test_exclusive_above_post_release_literal() -> None:
-    covered = ms('python_full_version <= "3.14.0.post1"') | ms(
-        'python_full_version > "3.14"'
+    covered = ms('implementation_version <= "3.14.0.post1"') | ms(
+        'implementation_version > "3.14"'
     )
     assert not covered.is_full()
-    above = ms('python_full_version > "3.14.0rc1.post1"')
-    assert not above.is_subset(ms('python_full_version > "3.14.0rc1"'))
-    band = ms('python_full_version > "3.14.0.post5"') & ms(
-        'python_full_version < "3.14.1"'
+    above = ms('implementation_version > "3.14.0rc1.post1"')
+    assert not above.is_subset(ms('implementation_version > "3.14.0rc1"'))
+    band = ms('implementation_version > "3.14.0.post5"') & ms(
+        'implementation_version < "3.14.1"'
     )
     assert not band.is_empty()
 
@@ -145,12 +184,12 @@ def test_open_band_holds_across_the_version_axes() -> None:
             {"python_full_version": "3.0.1"},
         ),
         (
-            'python_full_version > "3.9" and python_full_version < "3.9.1"',
-            {"python_full_version": "3.9.0.1"},
+            'python_full_version > "3.9" and python_full_version < "3.9.2"',
+            {"python_full_version": "3.9.1"},
         ),
         (
-            'python_full_version > "1!3" and python_full_version < "1!3.1"',
-            {"python_full_version": "1!3.0.1"},
+            'implementation_version > "1!3" and implementation_version < "1!3.1"',
+            {"implementation_version": "1!3.0.1"},
         ),
         (
             'implementation_version > "3" and implementation_version < "3.1"',
@@ -667,9 +706,10 @@ def test_evaluate_derive_mm_boundaries() -> None:
     marker = ms('python_version == "3.9"')
     assert marker.evaluate({"python_full_version": "3.9.7"})
     assert not marker.evaluate({"python_full_version": "3.10.0"})
-    # single-segment and non-version full versions still evaluate.
+    # A single release component still evaluates.
     assert not marker.evaluate({"python_full_version": "3"})
-    assert not marker.evaluate({"python_full_version": "not-a-version"})
+    with pytest.raises(ValueError, match="not-a-version"):
+        marker.evaluate({"python_full_version": "not-a-version"})
 
 
 def test_evaluate_python_version_only_env() -> None:
@@ -822,71 +862,32 @@ def test_implementation_version_is_version_or_string_twin() -> None:
             assert marker.evaluate(env) == Marker(text).evaluate(env), (text, value)
 
 
-def test_epoch_version_decisions_are_sound() -> None:
-    # An epoch full version truncates below its full ordering, so the pool must
-    # keep an epoch-bearing representative or the decisions turn unsound.
-    high = ms('python_full_version >= "3.14"')
-    low_mm = ms('python_version < "3.14"')
-    assert not high.is_disjoint(low_mm)
-    assert not high.is_subset(ms('python_version >= "3.10"'))
-    assert not ms(
-        'python_full_version >= "3.14" and python_version == "3.9"'
-    ).is_empty()
+def test_python_minor_and_full_version_are_disjoint() -> None:
+    high = ms('python_full_version >= "3.10.0"')
+    low = ms('python_version < "3.10"')
+    assert high.is_disjoint(low)
+    assert high.is_subset(ms('python_version >= "3.10"'))
+    assert (high & low).witness() is None
+    assert ms('python_full_version >= "3.14" and python_version == "3.9"').is_empty()
 
 
-def test_epoch_literal_pure_axis_decisions_are_sound() -> None:
-    # A pure python_full_version axis carrying an epoch literal: the neighbour
-    # bumps must sit in the literal's own epoch, or the band above it (1!4.0,
-    # 2!0) loses its representative and the decisions turn silently unsound.
-    above = ms('python_full_version > "1!3.9"')
-    band = ms('python_full_version ~= "1!3.9"')
-    at_or_above = ms('python_full_version >= "1!3.9"')
-    assert not above.is_subset(band)
-    assert not at_or_above.equivalent(band)
-    residue = above & band.complement()
-    assert not residue.is_empty()
-    assert residue.evaluate({"python_full_version": "2!0"})
-
-
-def test_epoch_gap_between_literals_is_sound() -> None:
-    # Mixing python_version (major.minor) with a python_full_version epoch-2
-    # literal leaves epoch 1 with no literal of its own; the pool must still mint
-    # a representative there or the satisfying epoch-1 band goes invisible.
-    text = (
-        'python_full_version >= "3.14" and python_full_version < "2!0" '
-        'and python_version < "3.10"'
-    )
-    marker = ms(text)
-    env = {"python_full_version": "1!3.9", "python_version": "3.9"}
-    assert not marker.is_empty()
-    assert marker.evaluate(env)
-    assert Marker(text).evaluate(env)
-    taut_text = (
-        'python_full_version >= "2!0" or python_version != "3.10" '
-        'or python_full_version <= "3.14.dev0"'
-    )
-    assert not ms(taut_text).is_full()
-
-
-def test_membership_substrings_mint_epoch_twins() -> None:
-    # A membership literal's version substrings feed the epoch-elevating pool, so
-    # the axis carries a twin for every epoch band and the decisions stay sound.
+def test_python_membership_does_not_mint_epochs() -> None:
     marker = ms('python_full_version >= "3.14" and python_version in "3.9 3.10"')
-    env = {"python_full_version": "1!3.9", "python_version": "3.9"}
-    assert not marker.is_empty()
-    assert marker.evaluate(env)
-    assert Marker(
-        'python_full_version >= "3.14" and python_version in "3.9 3.10"'
-    ).evaluate(env)
+    assert marker.is_empty()
+    assert marker.witness() is None
 
 
-def test_membership_epoch_twin_witnesses_non_implication() -> None:
-    # ~= "1!3.9" holds at 1!3.12, whose major.minor is 3.12, outside the set; the
-    # epoch twin of the membership substrings must exist or the implication is
-    # wrongly proven.
+def test_epoch_literals_on_generic_version_axis() -> None:
+    above = ms('implementation_version > "1!3.9"')
+    band = ms('implementation_version ~= "1!3.9"')
+    assert not above.is_subset(band)
+    assert (above & ~band).evaluate({"implementation_version": "2!0"})
+
+
+def test_epoch_comparison_has_no_python_witness() -> None:
     compat = ms('python_full_version ~= "1!3.9"')
-    member = ms('python_version in "3.9 3.10 3.11"')
-    assert not compat.is_subset(member)
+    assert compat.is_empty()
+    assert compat.witness() is None
 
 
 # --------------------------------------------------------------- restrict
@@ -1367,16 +1368,6 @@ def test_guard_substring_low_entropy(monkeypatch: pytest.MonkeyPatch) -> None:
     # index loop; the guard bounds the loop work, so it fires here.
     monkeypatch.setattr(markersets, "_MAX_CELLS", 100)
     marker = ms('sys_platform in "' + "a" * 50 + '"')
-    with pytest.raises(IntractableMarkerSet):
-        marker.is_empty()
-
-
-def test_guard_version_pool_epoch_elevation(monkeypatch: pytest.MonkeyPatch) -> None:
-    # Mixing python_version with many distinct-epoch python_full_version atoms
-    # triggers epoch elevation, whose product is bounded as it is generated.
-    monkeypatch.setattr(markersets, "_MAX_CELLS", 1000)
-    epochs = " and ".join(f'python_full_version == "{e}!2.0"' for e in range(1, 16))
-    marker = ms(f'python_version == "3.9" and {epochs}')
     with pytest.raises(IntractableMarkerSet):
         marker.is_empty()
 

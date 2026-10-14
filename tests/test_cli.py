@@ -13,6 +13,7 @@ import io
 import json
 import logging
 import os
+import platform
 import runpy
 import stat
 import subprocess
@@ -52,7 +53,7 @@ from nab._resolve import (
 from nab._run import ConfigLadder, _default_cache_dir, read_config_ladder
 from nab.cli import _system_exit_status, console_entry, main, run
 from nab.config.ladder import SourceRoots
-from nab.config.model import read_pyproject_config
+from nab.config.model import plan_targets, read_pyproject_config
 from nab.output import Printer, ProgressReporter, Verbosity
 from nab_index.atomic import atomic_write_text
 from nab_index.client import AsyncSimpleClient
@@ -79,6 +80,7 @@ from nab_project.lockfile import (
     WheelArtifact,
 )
 from nab_project.resolve import ResolveResult, TargetResult, env_signature
+from nab_provider._vendor.packaging import markers as packaging_markers
 from nab_provider._vendor.packaging.pylock import Pylock
 from nab_provider._vendor.packaging.requirements import Requirement
 from nab_provider._vendor.packaging.version import Version
@@ -379,6 +381,67 @@ def _make_pyproject(tmp_path: Path, body: str = "") -> Path:
     pyproject = tmp_path / "pyproject.toml"
     pyproject.write_text(body or '[project]\ndependencies = ["foo"]\n')
     return pyproject
+
+
+@pytest.mark.parametrize("full", ["3.13.2+", "3.15.0a8+", "3.15.0a8+dev"])
+@pytest.mark.parametrize("declared_platform", [False, True])
+def test_source_build_python_lock(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    full: str,
+    *,
+    declared_platform: bool,
+) -> None:
+    """Lock root and transitive Python-marked dependencies on a source build."""
+    monkeypatch.setattr(platform, "python_version", lambda: full)
+    monkeypatch.setattr(
+        platform, "python_version_tuple", lambda: tuple(full.split("."))
+    )
+    packaging_markers._cached_default_environment.cache_clear()
+
+    try:
+        for name, dependencies in (
+            ("first", ['second; python_full_version >= "3.9"']),
+            ("second", []),
+        ):
+            member = tmp_path / name
+            member.mkdir()
+            (member / "pyproject.toml").write_text(
+                f'[project]\nname = "{name}"\nversion = "1.0"\n'
+                f"dependencies = {json.dumps(dependencies)}\n",
+                encoding="utf-8",
+            )
+        pyproject = _make_pyproject(
+            tmp_path,
+            '[project]\nname = "root"\nversion = "0"\n'
+            "dependencies = ['first; python_version >= \"3.9\"']\n"
+            + "".join(
+                f'[[tool.nab.local-sources]]\nname = "{name}"\npath = "{name}"\n'
+                for name in ("first", "second")
+            )
+            + (
+                '[tool.nab.environment]\nplatform = "linux_x86_64"\n'
+                if declared_platform
+                else ""
+            ),
+        )
+        out = tmp_path / "pylock.toml"
+        with patch(
+            "nab_project.resolve.FetchCoordinator",
+            return_value=contextlib.nullcontext(make_coordinator([])),
+        ):
+            _lock_cli(str(pyproject), "--offline", "--no-cache", "--output", str(out))
+        written = tomli.loads(out.read_text())
+        assert [pkg["name"] for pkg in written["packages"]] == ["first", "second"]
+        (target,) = plan_targets(read_pyproject_config(pyproject))
+        assert all(
+            packaging_markers.Marker(row).evaluate(
+                {**target.marker_env, "python_full_version": full}
+            )
+            for row in written["environments"]
+        )
+    finally:
+        packaging_markers._cached_default_environment.cache_clear()
 
 
 def _make_archive_source_project(
@@ -2368,6 +2431,27 @@ class TestPythonFlag:
             " got '3.12.x'" in err
         )
         assert "[tool.nab]" not in err
+        assert not out.exists()
+
+    @pytest.mark.parametrize("value", ["1!3.12", "3.12.post1", "3.12.0.1"])
+    @pytest.mark.parametrize("locked", [False, True])
+    def test_unsupported_python_is_a_flag_error(
+        self,
+        tmp_path: Path,
+        capsys: pytest.CaptureFixture[str],
+        value: str,
+        *,
+        locked: bool,
+    ) -> None:
+        pyproject = _make_pyproject(tmp_path)
+        out = tmp_path / "pylock.toml"
+        with pytest.raises(SystemExit) as exc:
+            lock(pyproject, output=out, python=value, locked=locked)
+        assert exc.value.code == 1
+        err = capsys.readouterr().err
+        assert "--python" in err
+        assert value in err
+        assert "without an epoch" in err
         assert not out.exists()
 
     def test_download_invalid_value_is_a_flag_error(

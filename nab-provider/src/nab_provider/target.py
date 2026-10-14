@@ -25,6 +25,7 @@ from functools import lru_cache
 from typing import TYPE_CHECKING
 
 from nab_markersets.markersets import variable_names
+from nab_markersets.python_versions import validate_python_version
 from nab_provider._vendor.packaging import tags as ptags
 from nab_provider._vendor.packaging.markers import Marker, default_environment
 from nab_provider._vendor.packaging.specifiers import (
@@ -648,26 +649,25 @@ def python_axis_environment(python_version: str) -> dict[str, str]:
     ``python_version`` is padded to two components and
     ``python_full_version`` to three so patch-precision markers evaluate
     the same here as in the universal matrix. Raises ``InvalidVersion``
-    if the input is not a version.
+    if the input is not a supported Python version.
     """
     try:
+        validate_python_version(python_version)
         parsed = Version(python_version)
-    except InvalidVersion:
-        msg = f"python_version {python_version!r} is not a valid version"
-        raise InvalidVersion(msg) from None
+    except InvalidVersion as exc:
+        msg = f"python_version {python_version!r} is not a valid version: {exc}"
+        raise InvalidVersion(msg) from exc
     release = parsed.release
     minor = ".".join(str(part) for part in (*release, 0)[:_PYTHON_VERSION_PARTS])
     if len(release) >= _PYTHON_FULL_VERSION_PARTS:
         full = python_version
     else:
-        # Pad the release to three components, keeping the epoch and any
-        # prerelease/post/dev/local tag, which live outside ``release``.
-        epoch = f"{parsed.epoch}!" if parsed.epoch else ""
+        # Qualifiers live outside the release tuple.
         padded = ".".join(
             str(part) for part in (*release, 0, 0)[:_PYTHON_FULL_VERSION_PARTS]
         )
         suffix = str(parsed)[len(parsed.base_version) :]
-        full = f"{epoch}{padded}{suffix}"
+        full = f"{padded}{suffix}"
     return {"python_version": minor, "python_full_version": full}
 
 
@@ -817,15 +817,11 @@ def _language_level(spec: SpecifierSet) -> SpecifierSet:
 
 
 def _check_comparable(label: str, name: str, value: str) -> None:
-    """Reject a target python value no version comparison can read.
-
-    ``label`` and ``name`` identify the target and the marker variable, so
-    the failure says which value to fix.
-    """
+    """Reject unsupported Python values, naming their target and marker."""
     try:
-        Version(value)
+        validate_python_version(value, variable=name)
     except InvalidVersion as exc:
-        msg = f"target {label!r} names {name} {value!r}, which is not a PEP 440 version"
+        msg = f"target {label!r} names unsupported {name} {value!r}: {exc}"
         raise ValueError(msg) from exc
 
 

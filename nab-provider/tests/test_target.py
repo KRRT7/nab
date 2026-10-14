@@ -73,6 +73,21 @@ def _host_tags() -> tuple[Tag, ...]:
 
 
 class TestHostEnvironment:
+    @pytest.mark.parametrize(
+        ("full", "expected"),
+        [
+            ("3.13.2+", "3.13.2+local"),
+            ("3.15.0a8+", "3.15.0a8+local"),
+            ("3.15.0a8+dev", "3.15.0a8+dev"),
+            ("3.15.0rc1", "3.15.0rc1"),
+        ],
+    )
+    def test_source_build_versions(self, full: str, expected: str) -> None:
+        source = {**_HOST_ENV, "python_full_version": full}
+        env = host_environment(lambda: source)
+        assert env == {**source, "python_full_version": expected}
+        assert source["python_full_version"] == full
+
     def test_drops_non_string_values(self) -> None:
         """A source yielding a non-string value contributes nothing for it."""
         env = host_environment(lambda: {"os_name": "posix", "extras": frozenset()})
@@ -136,10 +151,12 @@ class TestTargetPythonIsComparable:
     """Every candidate's Requires-Python is tested against this target."""
 
     def test_an_unparseable_full_version_names_itself(self) -> None:
-        """A local-build version fails here, not once per candidate."""
-        with pytest.raises(ValueError, match="python_full_version '3.11.2\\+'"):
+        with pytest.raises(ValueError, match="python_full_version 'not-a-version'"):
             ResolveTarget.for_host(
-                env_source=lambda: {**_HOST_ENV, "python_full_version": "3.11.2+"},
+                env_source=lambda: {
+                    **_HOST_ENV,
+                    "python_full_version": "not-a-version",
+                },
                 tags_source=_host_tags,
             )
 
@@ -726,10 +743,16 @@ class TestPythonAxisEnvironment:
         assert Marker('python_full_version >= "3.14.0"').evaluate(env) is False
         assert Marker('python_full_version == "3.14.0"').evaluate(env) is False
 
-    def test_epoch_is_kept_when_padding(self) -> None:
-        """The epoch survives the pad to three release components."""
-        env = python_axis_environment("1!3.9")
-        assert env["python_full_version"] == "1!3.9.0"
+    def test_source_build_keeps_its_local_label_when_padding(self) -> None:
+        assert python_axis_environment("3.15a8+dev") == {
+            "python_version": "3.15",
+            "python_full_version": "3.15.0a8+dev",
+        }
+
+    @pytest.mark.parametrize("value", ["1!3.9", "3.9.post1", "3.9.0.1"])
+    def test_unsupported_python_version_is_rejected(self, value: str) -> None:
+        with pytest.raises(InvalidVersion, match="without an epoch"):
+            python_axis_environment(value)
 
 
 class TestApplyPythonAxisOverlay:

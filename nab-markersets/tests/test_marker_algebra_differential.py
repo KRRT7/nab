@@ -24,16 +24,11 @@ import pytest
 from nab_markersets._packaging import Marker, Version
 from nab_markersets.markersets import MarkerSet
 
-# Version values straddle every literal the alphabets use
-# (3.9, 3.10, 3.14), including the 3.14 prerelease-carve-out witnesses, an epoch
-# version (full ordering and major.minor truncation diverge), a local one, and
-# the deeper releases that are the only shape entering the band between two
-# adjacent literals.
+# Supported Python versions straddle the literals and their prerelease boundaries.
 PFV_GRID = [
     "2.7.18",
     "3.8.0",
     "3.9.0",
-    "3.9.0.1",
     "3.9.0b2",
     "3.9.7",
     "3.10.0",
@@ -42,17 +37,10 @@ PFV_GRID = [
     "3.14.0rc1",
     "3.14.0rc2",
     "3.14.0",
-    "3.14.0.post2",
-    "3.14.0.post6",
     "3.14.2",
     "3.15.0",
-    "1!3.0.1",
-    "1!3.9",
-    "1!4.0",
-    "2!0",
     "3.9.7+local",
-    "3.9.0.1",
-    "1!3.0.1",
+    "3.15.0a8+dev",
 ]
 SYS_GRID = ["linux", "win32", "darwin"]
 MACHINE_GRID = ["x86_64", "aarch64", "arm64"]
@@ -99,6 +87,10 @@ GRID = [
     *GRID,
     {**GRID[0], "implementation_version": "pypy"},
     {**GRID[0], "implementation_version": "foo"},
+    *(
+        {**GRID[0], "implementation_version": v}
+        for v in ("1!3.9", "2!0", "3.9.7+local", "3.14.0.post2", "3.9.0.1")
+    ),
 ]
 
 # platform_release is one value for the whole product above, so the values that

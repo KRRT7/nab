@@ -18,6 +18,7 @@ from typing import TYPE_CHECKING, Any, NamedTuple, TypeVar, cast
 from urllib.parse import urlsplit
 
 from nab_index.file_urls import is_file_url
+from nab_markersets.python_versions import validate_python_version
 from nab_project.conflicts import (
     ConflictKind,
     ConflictMember,
@@ -571,9 +572,9 @@ def parse_marker_environment(value: object, where: str) -> dict[str, str]:
             raise SourceConfigError(msg)
         if k in _VERSION_MARKER_VARIABLES:
             try:
-                Version(v)
+                validate_python_version(v, variable=k)
             except ValueError as exc:
-                msg = f"{where}.{k} must be a PEP 440 version, got {v!r}"
+                msg = f"{where}.{k} must be a PEP 440 version, got {v!r}: {exc}"
                 raise SourceConfigError(msg) from exc
         out[k] = v
     return out
@@ -632,11 +633,11 @@ def validate_environment_values(environment: Mapping[str, Any]) -> None:
     python = environment.get("python")
     if python is not None:
         try:
-            Version(python)
+            validate_python_version(python)
         except ValueError as exc:
             msg = (
                 "environment.python must be a version like '3.12' or"
-                f" '3.12.4', got {python!r}"
+                f" '3.12.4', got {python!r}: {exc}"
             )
             raise SourceConfigError(msg) from exc
     platform = environment.get("platform")
@@ -1572,10 +1573,12 @@ def _parse_python_patches(value: object, where: str) -> dict[str, str] | None:
             msg = f"{label} entries must be string -> string, got {k!r}: {v!r}"
             raise SourceConfigError(msg)
         try:
+            validate_python_version(k, variable="python_version")
+            validate_python_version(v)
             minor = Version(k)
             full = Version(v)
         except ValueError as exc:
-            msg = f"{label} expects version strings, got {k!r}: {v!r}"
+            msg = f"{label} expects version strings, got {k!r}: {v!r}: {exc}"
             raise SourceConfigError(msg) from exc
 
         if full.release[:2] != minor.release[:2]:
