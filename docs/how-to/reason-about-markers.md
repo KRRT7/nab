@@ -63,6 +63,16 @@ the short marker holds on a pre-release the long one excludes.
 '3.11.dev0'
 ```
 
+## Python versions
+
+Python environments cannot have a nonzero epoch, a post release, a local label or more than three
+release components. `python_full_version` can carry a prerelease or development suffix;
+`python_version` is its unqualified major.minor. `evaluate` and `restrict` reject unsupported Python
+values with `ValueError`.
+
+Comparison literals still follow PEP 440: `python_full_version < "1!0"` holds for every supported
+Python version, while `python_full_version >= "1!0"` selects none.
+
 ## Restrict known variables
 
 `restrict` substitutes the variables you name and leaves the rest.

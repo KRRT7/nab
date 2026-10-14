@@ -19,9 +19,9 @@ from typing import TYPE_CHECKING, NoReturn
 
 import tomli
 
+from nab_markersets.python_versions import validate_python_version
 from nab_project import toml_io
 from nab_project.paths import PathState, path_state
-from nab_provider._vendor.packaging.version import Version
 from nab_provider.policy import ResolveMode
 
 from . import env
@@ -270,9 +270,10 @@ def _cli_overrides(  # noqa: PLR0913 - one keyword per CLI flag it maps to a reg
 def _check_python_flag(python: str) -> None:
     """Read ``--python`` as a version here, so a bad value names the flag."""
     try:
-        Version(python)
-    except ValueError:
+        validate_python_version(python)
+    except ValueError as exc:
         msg = f"--python must be a version like '3.12' or '3.12.4', got {python!r}"
+        msg += f": {exc}"
         _fail_cli(SourceConfigError(msg))
 
 

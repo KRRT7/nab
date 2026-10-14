@@ -743,10 +743,10 @@ class TestPythonAxisEnvironment:
         assert Marker('python_full_version >= "3.14.0"').evaluate(env) is False
         assert Marker('python_full_version == "3.14.0"').evaluate(env) is False
 
-    def test_epoch_is_kept_when_padding(self) -> None:
-        """The epoch survives the pad to three release components."""
-        env = python_axis_environment("1!3.9")
-        assert env["python_full_version"] == "1!3.9.0"
+    @pytest.mark.parametrize("value", ["1!3.9", "3.9.post1", "3.9+local", "3.9.0.1"])
+    def test_unsupported_python_version_is_rejected(self, value: str) -> None:
+        with pytest.raises(InvalidVersion, match="without an epoch"):
+            python_axis_environment(value)
 
 
 class TestApplyPythonAxisOverlay:

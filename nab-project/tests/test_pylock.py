@@ -422,6 +422,14 @@ class TestNonCoveringEnvironments:
         assert result is not None
         assert str(result) == str(raw)
 
+    def test_impossible_python_overlap_drops_from_package_marker(self) -> None:
+        raw = Marker(
+            '(python_version < "3.10" and python_full_version >= "3.10.0")'
+            ' or sys_platform == "linux"'
+        )
+        result = _finalize_marker(raw, MarkerSet.full(), "foo")
+        assert str(result) == 'sys_platform == "linux"'
+
     def test_globally_contradictory_marker_ships_raw(self) -> None:
         raw = Marker('sys_platform == "linux" and sys_platform != "linux"')
         result = _finalize_marker(raw, MarkerSet.full(), "never")

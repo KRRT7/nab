@@ -19,6 +19,7 @@ from . import _markersets
 from ._compat import override
 from ._markersets import variable_names
 from .errors import IntractableMarkerSet, UnserializableMarkerSet
+from .python_versions import validate_python_environment
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Mapping
@@ -89,6 +90,11 @@ class MarkerSet:
     ``MarkerSet``. :meth:`simplify` and :meth:`to_marker_string` are the two that
     can refuse, both at the marker-grammar boundary. ``==`` is structural;
     :meth:`equivalent` is semantic.
+
+    Python values have at most three release components, no nonzero epoch,
+    post release or local label. ``python_full_version`` permits prerelease
+    and development suffixes; ``python_version`` is its unqualified
+    major.minor. Comparison literals still follow PEP 440.
 
     The procedures partition each named axis into cells. Every atom is
     constant within a cell, and the set is read once per cell. The
@@ -361,11 +367,13 @@ class MarkerSet:
         >>> both.restrict({"sys_platform": "linux"}).to_marker_string()
         'python_version >= "3.11"'
 
+        :raises ValueError: if a supplied Python value is unsupported.
         :raises IntractableMarkerSet: if a version literal or value overruns the
             integer-string limit, or the marker nests past the stack.
         """
         prepared = _markersets.prepare_environment(env)
         _markersets.reject_oversized_literals(self._tree, prepared)
+        validate_python_environment(prepared)
         return self._wrap(_markersets.restrict_tree(self._tree, prepared))
 
     @_bounded
@@ -396,11 +404,13 @@ class MarkerSet:
 
         :raises KeyError: packaging's ``UndefinedEnvironmentName``, if the
             marker references a variable ``env`` does not supply.
+        :raises ValueError: if a supplied Python value is unsupported.
         :raises IntractableMarkerSet: if a version literal or value overruns the
             integer-string limit, or the marker nests past the stack.
         """
         prepared = _markersets.prepare_environment(env)
         _markersets.reject_oversized_literals(self._tree, prepared)
+        validate_python_environment(prepared)
         return _markersets.evaluate_tree(self._tree, prepared)
 
     def __contains__(self, env: Mapping[str, str | AbstractSet[str]]) -> bool:

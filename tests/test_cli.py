@@ -2433,6 +2433,29 @@ class TestPythonFlag:
         assert "[tool.nab]" not in err
         assert not out.exists()
 
+    @pytest.mark.parametrize(
+        "value", ["1!3.12", "3.12.post1", "3.12+local", "3.12.0.1"]
+    )
+    @pytest.mark.parametrize("locked", [False, True])
+    def test_unsupported_python_is_a_flag_error(
+        self,
+        tmp_path: Path,
+        capsys: pytest.CaptureFixture[str],
+        value: str,
+        *,
+        locked: bool,
+    ) -> None:
+        pyproject = _make_pyproject(tmp_path)
+        out = tmp_path / "pylock.toml"
+        with pytest.raises(SystemExit) as exc:
+            lock(pyproject, output=out, python=value, locked=locked)
+        assert exc.value.code == 1
+        err = capsys.readouterr().err
+        assert "--python" in err
+        assert value in err
+        assert "without an epoch" in err
+        assert not out.exists()
+
     def test_download_invalid_value_is_a_flag_error(
         self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
     ) -> None:

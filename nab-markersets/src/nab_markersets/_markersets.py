@@ -34,6 +34,7 @@ from ._packaging import (
     parse_marker,
 )
 from .errors import IntractableMarkerSet, UnserializableMarkerSet
+from .python_versions import supports_python_version, validate_python_environment
 
 if TYPE_CHECKING:
     from collections.abc import Container, Iterable, Iterator, Mapping, Sequence
@@ -91,6 +92,7 @@ _MISSING = object()
 
 _MEMBERSHIP = frozenset({"in", "not in"})
 _ORDERED_UNDEFINED = frozenset({"~=", "==="})
+_PYTHON_RELEASE_PARTS = 3
 
 
 def _domain(variable: str) -> str:
@@ -923,8 +925,6 @@ _POOL_ANCHORS: tuple[tuple[Version, str], ...] = tuple(
 def _version_pool(
     entries: Iterable[tuple[Version, str]],
     *,
-    elevate_epoch: bool,
-    max_cells: int,
     memo: Memo,
 ) -> list[str]:
     parsed: list[tuple[Version, str]] = list(_POOL_ANCHORS)
@@ -944,34 +944,7 @@ def _version_pool(
         if mid is not None:
             extra.append(mid)
 
-    base = [text for _, text in parsed] + extra
-    if not elevate_epoch:
-        return base
-    return _elevate_epochs(base, parsed, max_cells)
-
-
-def _elevate_epochs(
-    base: list[str], parsed: Sequence[tuple[Version, str]], max_cells: int
-) -> list[str]:
-    """Return ``base`` plus a twin of every point in every epoch the pool reaches.
-
-    Raises :class:`IntractableMarkerSet` when that outgrows ``max_cells``.
-    """
-    # A1 lowers python_version here, so major.minor and full ordering diverge across
-    # an epoch boundary: 1!3.9 truncates to 3.9 yet outranks 3.14. Each point needs a
-    # twin in every epoch the pool reaches, and the pool already carries one above
-    # the top literal, so the range runs two past it.
-    epochs = {version.epoch for version, _ in parsed}
-    targets = range(1, max(epochs) + 2)
-
-    elevated = list(base)
-    for epoch in targets:
-        for text in base:
-            elevated.append(f"{epoch}!{text}")
-            if len(elevated) > max_cells:
-                msg = f"version pool exceeds max_cells={max_cells}"
-                raise IntractableMarkerSet(msg)
-    return elevated
+    return [text for _, text in parsed] + extra
 
 
 def _membership_candidates(atom: Atom, memo: Memo) -> list[str]:
@@ -984,24 +957,21 @@ def _membership_candidates(atom: Atom, memo: Memo) -> list[str]:
     return subs
 
 
-def _mixes_mm_and_full(atoms: Sequence[Atom]) -> bool:
-    """Whether the axis carries both A1-lowered and direct version atoms."""
-    return any(atom.derive_mm for atom in atoms) and any(
-        not atom.derive_mm for atom in atoms
-    )
-
-
 def _dedupe_candidates(
-    candidates: Iterable[str], *, pure_version: bool, max_cells: int, memo: Memo
+    candidates: Iterable[str], *, variable: str, max_cells: int, memo: Memo
 ) -> list[str]:
     ordered: list[str] = []
     seen: set[str] = set()
     for candidate in candidates:
         if candidate in seen:
             continue
-        # A pure Version axis holds only PEP 440 versions.
-        if pure_version and _pooled_version(candidate, memo) is None:
-            continue
+        # Python axes exclude versions no supported target can report.
+        if is_pure_version(variable):
+            version = _pooled_version(candidate, memo)
+            if version is None or not supports_python_version(
+                version, variable=variable
+            ):
+                continue
         seen.add(candidate)
         ordered.append(candidate)
         if len(ordered) > max_cells:
@@ -1084,6 +1054,21 @@ def _reduce_work_exceeds(
     return False
 
 
+def _python_release_aliases(
+    entries: Sequence[tuple[Version, str]],
+) -> list[tuple[Version, str]]:
+    """Seed supported releases equivalent to zero-padded Python bounds."""
+    aliases = []
+    for version, _text in entries:
+        release = version.release
+        if len(release) > _PYTHON_RELEASE_PARTS and not any(
+            release[_PYTHON_RELEASE_PARTS:]
+        ):
+            alias = version.__replace__(release=release[:_PYTHON_RELEASE_PARTS])
+            aliases.append((alias, str(alias)))
+    return aliases
+
+
 def _value_candidates(
     variable: str, atoms: Sequence[Atom], max_cells: int, memo: Memo
 ) -> list[str]:
@@ -1119,17 +1104,17 @@ def _value_candidates(
         entries: list[tuple[Version, str]] = []
         for atom in atoms:
             entries.extend(atom.pool_entries())
+        if raw_kind == DOMAIN_VERSION:
+            entries.extend(_python_release_aliases(entries))
         candidates.extend(
             _version_pool(
                 entries,
-                elevate_epoch=_mixes_mm_and_full(atoms),
-                max_cells=max_cells,
                 memo=memo,
             )
         )
     return _dedupe_candidates(
         candidates,
-        pure_version=raw_kind == DOMAIN_VERSION,
+        variable=variable,
         max_cells=max_cells,
         memo=memo,
     )
@@ -1446,6 +1431,10 @@ def witness(
     memo = Memo() if store is None else store
     for cell in _enumerate_cells(node, _cell_space(node, max_cells, memo)):
         env = _materialize(cell)
+        try:
+            validate_python_environment(env)
+        except InvalidVersion:
+            continue
         if evaluate_tree(node, env):
             return env
     return None
