@@ -183,7 +183,7 @@ def resolve_for_targets(  # noqa: PLR0913 - the knobs of a project resolve
     # ``default-groups`` is project policy: a default install activates
     # them, so they join the CLI selection.
     effective_groups = active_group_names(
-        groups, inputs.default_groups, inputs.base_group
+        groups, inputs.default_groups, inputs.base_group, inputs.build_group
     )
 
     forks, base_requirements = _plan_forks(
@@ -330,19 +330,19 @@ def active_group_names(
     groups: Sequence[str],
     default_groups: Sequence[str],
     base_group: str | None,
+    build_group: str | None = None,
 ) -> tuple[str, ...]:
     """Return the ``[dependency-groups]`` names this run activates, in order.
 
-    ``base-group`` may be named in ``default-groups`` to keep the project's
-    own dependencies in the default selection.  Its requirements are
-    ``[project].dependencies``, roots already, so it is dropped rather than
-    looked up as a group.  ``groups`` keeps the name, so selecting a group
-    the project does not declare still raises.
+    Configured defaults already have roots. Explicit groups must be declared.
     """
+    configured = {
+        canonicalize_name(name)
+        for name in (base_group, build_group)
+        if name is not None
+    }
     policy = tuple(
-        name
-        for name in default_groups
-        if base_group is None or canonicalize_name(name) != base_group
+        name for name in default_groups if canonicalize_name(name) not in configured
     )
     return tuple(dict.fromkeys((*groups, *policy)))
 

@@ -181,9 +181,12 @@ version = "1.31.0"
 marker = "\"build\" in dependency_groups"
 ```
 
-The build name lands in `dependency-groups` and not in `default-groups`: an install that asks for no
-group is installing the project, not building it. Only the static list is read, so whatever a
-backend would add from `get_requires_for_build_wheel` is not covered.
+The build name lands in `dependency-groups`. Include it in `[tool.nab].default-groups` to install
+the build requirements by default, for example `default-groups = ["default", "build"]`. Like
+`base-group`, the name is not accepted by `--groups`.
+
+Only the static list is read, so whatever a backend would add from `get_requires_for_build_wheel` is
+not covered.
 
 `base-group` is required. Without it, the project's dependencies have no marker and accompany every
 selection, including the build group. Naming both lets a consumer select them separately or

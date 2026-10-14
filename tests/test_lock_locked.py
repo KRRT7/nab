@@ -224,35 +224,43 @@ def test_locked_build_lock_checks_its_own_default_file(
     assert "Lockfile pylock.build.toml is up to date." in capsys.readouterr().err
 
 
+@pytest.mark.parametrize("defaults", [(), ("build",), ("main", "BUILD")])
 def test_a_lock_offering_a_build_group_is_up_to_date(
-    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+    tmp_path: Path, capsys: pytest.CaptureFixture[str], defaults: tuple[str, ...]
 ) -> None:
-    """No run selects the build group, so its name must not read as drift."""
+    """The configured build name remains valid with or without defaults."""
     pyproject = _write_pyproject(
         tmp_path,
         '[project]\nname = "proj"\ndependencies = ["foo"]\n'
         '[build-system]\nrequires = ["foo"]\n'
-        '[tool.nab]\nbase-group = "main"\nbuild-group = "build"\n',
+        '[tool.nab]\nbase-group = "main"\nbuild-group = "build"\n'
+        f"default-groups = {list(defaults)!r}\n",
     )
     out = tmp_path / "pylock.toml"
     _write_lock(pyproject, out, _result({"foo": "1.0"}))
     capsys.readouterr()
     assert tomli.loads(out.read_text())["dependency-groups"] == ["build", "main"]
 
-    _run_locked(pyproject, out, _locked_mock(_result({"foo": "1.0"})))
+    before = out.read_bytes()
+    mock = _locked_mock(_result({"foo": "1.0"}))
+    _run_locked(pyproject, out, mock)
 
     assert "is up to date" in capsys.readouterr().err
+    mock.assert_called_once()
+    assert out.read_bytes() == before
 
 
+@pytest.mark.parametrize("defaults", [(), ("build",)])
 def test_a_tightened_build_requirement_fires_with_a_build_group(
-    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+    tmp_path: Path, capsys: pytest.CaptureFixture[str], defaults: tuple[str, ...]
 ) -> None:
     """The fast-fail tier sees the build side when build-group carries it."""
     body = '[project]\nname = "proj"\ndependencies = ["bar"]\n[build-system]\n'
     pyproject = _write_pyproject(
         tmp_path,
         body
-        + 'requires = ["foo"]\n[tool.nab]\nbase-group = "main"\nbuild-group = "build"\n',
+        + 'requires = ["foo"]\n[tool.nab]\nbase-group = "main"\nbuild-group = "build"\n'
+        + f"default-groups = {list(defaults)!r}\n",
     )
     out = tmp_path / "pylock.toml"
     _write_lock(pyproject, out, _result({"bar": "1.0", "foo": "1.5"}))
@@ -260,7 +268,8 @@ def test_a_tightened_build_requirement_fires_with_a_build_group(
     pyproject.write_text(
         body
         + 'requires = ["foo>=2.0"]\n'
-        + '[tool.nab]\nbase-group = "main"\nbuild-group = "build"\n',
+        + '[tool.nab]\nbase-group = "main"\nbuild-group = "build"\n'
+        + f"default-groups = {list(defaults)!r}\n",
         encoding="utf-8",
     )
 

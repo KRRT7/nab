@@ -6738,7 +6738,10 @@ class TestBuildGroup:
                 inputs=ResolveInputs(base_group="main", build_group="build"),
             )
 
-    def test_a_build_requirements_lock_drops_the_group(self, tmp_path: Path) -> None:
+    @pytest.mark.parametrize("defaults", [(), ("build",)])
+    def test_a_build_requirements_lock_drops_the_group(
+        self, tmp_path: Path, defaults: tuple[str, ...]
+    ) -> None:
         """Its build-requirement roots remain unconditional.
 
         The pins are the same either way, so what the group would change is
@@ -6746,16 +6749,20 @@ class TestBuildGroup:
         """
         pyproject = tmp_path / "pyproject.toml"
         pyproject.write_text(self._PYPROJECT + _BOTH_GROUPS)
-        inputs = inputs_for_build_requirements(
-            ResolveInputs(base_group="main", build_group="build")
+        configured = ResolveInputs(
+            base_group="main", build_group="build", default_groups=defaults
         )
+        inputs = inputs_for_build_requirements(configured)
 
-        result = self._mocked_resolve(pyproject, build_requirements=True)
+        result = self._mocked_resolve(
+            pyproject, inputs=configured, build_requirements=True
+        )
         lock_input = build_lock_input(result, inputs=inputs)
 
         assert _pins(result) == {"hatchling": V("2.0")}
         assert lock_input.build_group is None
         assert lock_input.active_groups == ()
+        assert lock_input.default_groups == ()
 
     @patch("nab_project.resolve.resolve_with_coordinator")
     def test_build_requires_join_every_conflict_fork(
@@ -6855,7 +6862,12 @@ class TestBuildGroupMarkers:
     )
 
     def _lock(
-        self, tmp_path: Path, *, tool: str, groups: tuple[str, ...] = ()
+        self,
+        tmp_path: Path,
+        *,
+        tool: str,
+        groups: tuple[str, ...] = (),
+        default_groups: tuple[str, ...] = (),
     ) -> Pylock:
         """Resolve and emit the root project, with ``tool`` appended to it."""
         return TestExtraAndGroupMembershipMarkers._lock(
@@ -6864,8 +6876,120 @@ class TestBuildGroupMarkers:
             root=self._ROOT + tool,
             members=self._MEMBERS,
             sources=tuple(self._MEMBERS),
-            inputs=ResolveInputs(base_group="main", build_group="build"),
+            inputs=ResolveInputs(
+                base_group="main", build_group="build", default_groups=default_groups
+            ),
         )
+
+    @pytest.mark.parametrize(
+        ("defaults", "selected"),
+        [
+            (("build",), {"builder"}),
+            (("main", "build"), {"core", "builder"}),
+            (("dev", "build"), {"mydev", "builder"}),
+            (("dev", "main", "build"), {"mydev", "core", "builder"}),
+            (("BUILD", "Main", "build"), {"core", "builder"}),
+        ],
+    )
+    def test_build_group_can_install_by_default(
+        self, tmp_path: Path, defaults: tuple[str, ...], selected: set[str]
+    ) -> None:
+        pylock = self._lock(tmp_path, tool=_BOTH_GROUPS, default_groups=defaults)
+
+        assert pylock.default_groups == tuple(sorted({n.lower() for n in defaults}))
+        assert _pylock_selected(pylock) == selected
+        assert _pylock_selected(pylock, dependency_groups=[]) == set()
+
+        assert _pylock_selected(pylock, dependency_groups=["main"]) == {"core"}
+        assert _pylock_selected(pylock, dependency_groups=["build"]) == {"builder"}
+
+    def test_build_default_retains_shared_transitive_dependencies(
+        self, tmp_path: Path
+    ) -> None:
+        members = self._MEMBERS | {
+            "builder": self._MEMBERS["builder"] + 'dependencies = ["core"]\n'
+        }
+        pylock = TestExtraAndGroupMembershipMarkers._lock(
+            tmp_path,
+            root=self._ROOT + _BOTH_GROUPS,
+            members=members,
+            sources=tuple(members),
+            inputs=ResolveInputs(
+                base_group="main", build_group="build", default_groups=("build",)
+            ),
+        )
+
+        assert _pylock_selected(pylock) == {"builder", "core"}
+        assert _pylock_selected(pylock, dependency_groups=["main"]) == {"core"}
+        assert _pylock_markers(pylock)["core"] == (
+            '"build" in dependency_groups or "main" in dependency_groups'
+        )
+
+    def test_build_default_normalizes_group_separators(self, tmp_path: Path) -> None:
+        pylock = TestExtraAndGroupMembershipMarkers._lock(
+            tmp_path,
+            root=self._ROOT,
+            members=self._MEMBERS,
+            sources=tuple(self._MEMBERS),
+            inputs=ResolveInputs(
+                base_group="main",
+                build_group="build-system",
+                default_groups=("BUILD_System", "build.system"),
+            ),
+        )
+
+        assert pylock.default_groups == ("build-system",)
+        assert _pylock_selected(pylock) == {"builder"}
+
+    def test_empty_build_requirements_allow_a_default(self, tmp_path: Path) -> None:
+        pylock = TestExtraAndGroupMembershipMarkers._lock(
+            tmp_path,
+            root=self._ROOT.replace('requires = ["builder"]', "requires = []"),
+            members=self._MEMBERS,
+            sources=tuple(self._MEMBERS),
+            inputs=ResolveInputs(
+                base_group="main", build_group="build", default_groups=("build",)
+            ),
+        )
+
+        assert pylock.default_groups == ("build",)
+        assert _pylock_selected(pylock) == set()
+
+    def test_build_default_selects_its_conflict_fork(self, tmp_path: Path) -> None:
+        pylock = TestExtraAndGroupMembershipMarkers._lock(
+            tmp_path,
+            root=self._ROOT,
+            members=self._MEMBERS,
+            sources=tuple(self._MEMBERS),
+            groups=("dev",),
+            inputs=ResolveInputs(
+                base_group="main",
+                build_group="build",
+                default_groups=("build",),
+                conflicts=(_groups_conflict("build", "dev"),),
+            ),
+        )
+
+        assert _pylock_selected(pylock) == {"builder"}
+        assert _pylock_selected(pylock, dependency_groups=["dev"]) == {"mydev"}
+
+    @pytest.mark.parametrize("group", ["build", "ghost"])
+    def test_default_build_group_does_not_accept_undeclared_cli_groups(
+        self, tmp_path: Path, group: str
+    ) -> None:
+        with pytest.raises(LookupError, match=f"'{group}' not found"):
+            self._lock(
+                tmp_path,
+                tool=_BOTH_GROUPS,
+                groups=(group,),
+                default_groups=("build",),
+            )
+
+    def test_default_build_group_still_rejects_unknown_defaults(
+        self, tmp_path: Path
+    ) -> None:
+        with pytest.raises(LookupError, match="'ghost' not found"):
+            self._lock(tmp_path, tool=_BOTH_GROUPS, default_groups=("build", "ghost"))
 
     def test_each_side_gates_on_its_own_name(self, tmp_path: Path) -> None:
         """Only the build group reaches the build requirement."""

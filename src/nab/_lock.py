@@ -708,7 +708,7 @@ def _active_root_requirements(
             )
 
     effective_groups = dict.fromkeys(
-        active_group_names(groups, default_groups, base_group)
+        active_group_names(groups, default_groups, base_group, build_group)
     )
     if effective_groups:
         table = read_pyproject_groups(path)
