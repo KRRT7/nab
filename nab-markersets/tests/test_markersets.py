@@ -575,6 +575,22 @@ def _partition_counter(monkeypatch: pytest.MonkeyPatch) -> Callable[[], int]:
     return lambda: calls
 
 
+def _decision_counter(monkeypatch: pytest.MonkeyPatch) -> Callable[[], int]:
+    """Count emptiness decisions that the store could not answer."""
+    calls = 0
+    real = engine._decide_empty
+
+    def counting(
+        node: engine.Formula, max_cells: int, memo: engine.Memo
+    ) -> engine._Decision:
+        nonlocal calls
+        calls += 1
+        return real(node, max_cells, memo)
+
+    monkeypatch.setattr(engine, "_decide_empty", counting)
+    return lambda: calls
+
+
 def _truth_counter(monkeypatch: pytest.MonkeyPatch) -> Callable[[], int]:
     """Start counting atom-truth evaluations, and return a reader for the count.
 
@@ -710,6 +726,26 @@ def test_partition_is_keyed_on_atom_order_not_just_the_set() -> None:
         assert cell.vector == tuple(atom.holds(cell.point) for atom in atoms)
     for cell in backward:
         assert cell.vector == tuple(atom.holds(cell.point) for atom in reversed(atoms))
+
+
+def test_clause_decisions_reuse_work_across_atom_orders(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A reordered clause reuses its decision without evaluating cells again."""
+    atoms = engine.collect_atoms(
+        engine.parse('python_version < "3.11" and python_version >= "3.10"')
+    )
+    store = engine.Memo()
+    decisions = _decision_counter(monkeypatch)
+
+    forward = engine._clause_formula(atoms)
+    assert engine.is_empty(forward, _MAX_CELLS, store) is False
+    first = decisions()
+
+    backward = engine._clause_formula(reversed(atoms))
+    assert engine.is_empty(backward, _MAX_CELLS, store) is False
+    assert first == 1
+    assert decisions() == first
 
 
 def test_partitions_do_not_outlive_one_operation(
