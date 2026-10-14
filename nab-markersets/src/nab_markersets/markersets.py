@@ -91,10 +91,10 @@ class MarkerSet:
     can refuse, both at the marker-grammar boundary. ``==`` is structural;
     :meth:`equivalent` is semantic.
 
-    Python values have at most three release components, no nonzero epoch,
-    post release or local label. ``python_full_version`` permits prerelease
-    and development suffixes; ``python_version`` is its unqualified
-    major.minor. Comparison literals still follow PEP 440.
+    Python values have at most three release components, no nonzero epoch
+    or post release. ``python_full_version`` permits prerelease, development
+    and local suffixes; ``python_version`` is its unqualified major.minor.
+    Comparison literals still follow PEP 440.
 
     The procedures partition each named axis into cells. Every atom is
     constant within a cell, and the set is read once per cell. The

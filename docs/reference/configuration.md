@@ -711,8 +711,8 @@ for disabled implementations are allowed. `python-order` orders selected minors 
 implementations; `python-patches` pins every target of that minor to the same patch release. Shared
 platform IDs keep their matrix order, followed by new IDs in enabled-implementation order.
 
-Python targets accept up to three release components and an optional prerelease or development
-suffix. Nonzero epochs, post releases and local labels are rejected in `environment.python`,
+Python targets accept up to three release components with optional prerelease, development and local
+suffixes. Nonzero epochs and post releases are rejected in `environment.python`,
 `marker-environment` Python values and `matrix.python-patches`.
 
 ### Platform tag knobs

@@ -65,10 +65,11 @@ the short marker holds on a pre-release the long one excludes.
 
 ## Python versions
 
-Python environments cannot have a nonzero epoch, a post release, a local label or more than three
-release components. `python_full_version` can carry a prerelease or development suffix;
+Python environments cannot have a nonzero epoch, a post release or more than three release
+components. `python_full_version` can carry prerelease, development and local suffixes;
 `python_version` is its unqualified major.minor. `evaluate` and `restrict` reject unsupported Python
-values with `ValueError`.
+values with `ValueError`. Legacy source-build versions ending in `+` are repaired to `+local` before
+validation.
 
 Comparison literals still follow PEP 440: `python_full_version < "1!0"` holds for every supported
 Python version, while `python_full_version >= "1!0"` selects none.

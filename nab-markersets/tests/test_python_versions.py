@@ -10,13 +10,16 @@ from nab_markersets.python_versions import validate_python_version
 
 
 @pytest.mark.parametrize(
-    "value", ["1!3.12.0", "3.12.0.post0", "3.12.0+local", "3.12.0.1"]
+    "value",
+    ["1!3.12.0", "3.12.0.post0", "3.12.0.1", "1!3.12.0+", "3.12.0.post0+", "3.12.0.1+"],
 )
 @pytest.mark.parametrize("method", ["evaluate", "restrict"])
 def test_unsupported_python_environment_is_rejected(value: str, method: str) -> None:
     marker = MarkerSet.from_marker('python_full_version >= "3.10"')
+    env = {"python_full_version": value}
     with pytest.raises(ValueError, match="python_full_version"):
-        getattr(marker, method)({"python_full_version": value})
+        getattr(marker, method)(env)
+    assert env == {"python_full_version": value}
 
 
 @pytest.mark.parametrize(
@@ -39,6 +42,8 @@ def test_minor_marker_value_has_no_qualifiers(value: str) -> None:
         "3.12.0.dev0",
         "3.12.0a1.dev1",
         "0!3.12.0",
+        "3.12.0+local",
+        "3.15.0a8+dev",
     ],
 )
 def test_supported_python_targets(value: str) -> None:
@@ -58,7 +63,7 @@ def test_supported_python_targets(value: str) -> None:
         ('python_full_version >= "1!0"', True),
         ('python_version == "1!3.12"', True),
         ('python_full_version == "3.12.0.post0"', True),
-        ('python_full_version == "3.12.0+local"', True),
+        ('python_full_version == "3.12.0+local"', False),
         ('python_full_version == "3.12.0.1"', True),
         ('python_full_version > "3.12.0" and python_full_version < "3.12.1"', True),
         ('python_full_version == "3.12.0.0"', False),
@@ -99,3 +104,10 @@ def test_opaque_substring_cannot_return_an_unsupported_python_witness(
 ) -> None:
     marker = MarkerSet.from_marker(f'"{literal}" in python_full_version')
     assert marker.witness() is None
+
+
+def test_source_build_local_label_is_a_valid_python_witness() -> None:
+    marker = MarkerSet.from_marker('"3.15.0a8+dev" in python_full_version')
+    env = marker.witness()
+    assert env == {"python_full_version": "3.15.0a8+dev", "python_version": "3.15"}
+    assert marker.evaluate(env)

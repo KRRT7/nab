@@ -637,7 +637,7 @@ def test_one_operation_reads_each_atom_truth_once(
     truths = _truth_counter(monkeypatch)
     assert left.equivalent_within(right, _row_universe()) is True
 
-    assert truths() == 95
+    assert truths() == 132
 
 
 def test_atoms_keep_no_truths_between_operations(
@@ -737,7 +737,7 @@ def test_a_shared_store_serves_the_next_decision_its_truths(
     """A decision handed the previous one's store re-reads no stored atom truth.
 
     Only restriction repeats, one read for each of the six rows' two operands,
-    against 95 for the decision itself.
+    against 132 for the decision itself.
     """
     universe = _row_universe()
     left = ms('python_version < "3.12"' + _SPREAD)
@@ -749,7 +749,7 @@ def test_a_shared_store_serves_the_next_decision_its_truths(
     first = truths()
     left.equivalent_within(right, universe, store=store)
 
-    assert first == 95
+    assert first == 132
     assert truths() - first == 12
 
 

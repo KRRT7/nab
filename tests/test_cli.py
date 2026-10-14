@@ -2433,9 +2433,7 @@ class TestPythonFlag:
         assert "[tool.nab]" not in err
         assert not out.exists()
 
-    @pytest.mark.parametrize(
-        "value", ["1!3.12", "3.12.post1", "3.12+local", "3.12.0.1"]
-    )
+    @pytest.mark.parametrize("value", ["1!3.12", "3.12.post1", "3.12.0.1"])
     @pytest.mark.parametrize("locked", [False, True])
     def test_unsupported_python_is_a_flag_error(
         self,

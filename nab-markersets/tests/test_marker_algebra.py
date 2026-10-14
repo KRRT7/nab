@@ -1296,7 +1296,7 @@ def test_unserializable_degraded_equality_complement() -> None:
     # operator table, where they mean exact equality. Using != for the
     # complement would re-dispatch as a version, so it has no marker string.
     for text in (
-        'implementation_version >= "3.9+local"',
+        'python_full_version >= "3.9+local"',
         'platform_release <= "6.6+x"',
     ):
         with pytest.raises(

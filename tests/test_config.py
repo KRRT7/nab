@@ -2273,6 +2273,7 @@ class TestEnvironment:
             ("3.14rc1", "3.14.0rc1"),
             ("3.14a1", "3.14.0a1"),
             ("3.14.dev0", "3.14.0.dev0"),
+            ("3.14+local", "3.14.0+local"),
         ],
     )
     def test_environment_tagged_python_without_a_micro_pins_whole(
@@ -6663,9 +6664,7 @@ class TestPyPyAbiConfiguration:
             read_pyproject_config(path)
 
 
-@pytest.mark.parametrize(
-    "value", ["1!3.12.0", "3.12.0.post1", "3.12.0+local", "3.12.0.1"]
-)
+@pytest.mark.parametrize("value", ["1!3.12.0", "3.12.0.post1", "3.12.0.1"])
 @pytest.mark.parametrize(
     "table",
     [

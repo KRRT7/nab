@@ -15,13 +15,14 @@ _FULL_PARTS = 3
 
 def supports_python_version(version: Version, *, variable: str) -> bool:
     """Whether a parsed value belongs to the named Python marker's domain."""
-    if version.epoch or version.post is not None or version.local is not None:
+    if version.epoch or version.post is not None:
         return False
     if variable == "python_version":
         return (
             len(version.release) <= _MINOR_PARTS
             and version.pre is None
             and version.dev is None
+            and version.local is None
         )
     return len(version.release) <= _FULL_PARTS
 
@@ -35,12 +36,9 @@ def validate_python_version(
     shape = (
         "major.minor"
         if variable == "python_version"
-        else "major.minor.micro, optionally with a prerelease or development suffix"
+        else "major.minor.micro with optional prerelease, dev or local suffixes"
     )
-    msg = (
-        f"{variable} {value!r} must be {shape}, without an epoch,"
-        " post release or local label"
-    )
+    msg = f"{variable} {value!r} must be {shape}, without an epoch or post release"
     raise InvalidVersion(msg)
 
 

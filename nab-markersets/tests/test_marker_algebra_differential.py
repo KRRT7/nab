@@ -39,6 +39,8 @@ PFV_GRID = [
     "3.14.0",
     "3.14.2",
     "3.15.0",
+    "3.9.7+local",
+    "3.15.0a8+dev",
 ]
 SYS_GRID = ["linux", "win32", "darwin"]
 MACHINE_GRID = ["x86_64", "aarch64", "arm64"]

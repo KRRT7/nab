@@ -743,7 +743,13 @@ class TestPythonAxisEnvironment:
         assert Marker('python_full_version >= "3.14.0"').evaluate(env) is False
         assert Marker('python_full_version == "3.14.0"').evaluate(env) is False
 
-    @pytest.mark.parametrize("value", ["1!3.9", "3.9.post1", "3.9+local", "3.9.0.1"])
+    def test_source_build_keeps_its_local_label_when_padding(self) -> None:
+        assert python_axis_environment("3.15a8+dev") == {
+            "python_version": "3.15",
+            "python_full_version": "3.15.0a8+dev",
+        }
+
+    @pytest.mark.parametrize("value", ["1!3.9", "3.9.post1", "3.9.0.1"])
     def test_unsupported_python_version_is_rejected(self, value: str) -> None:
         with pytest.raises(InvalidVersion, match="without an epoch"):
             python_axis_environment(value)
