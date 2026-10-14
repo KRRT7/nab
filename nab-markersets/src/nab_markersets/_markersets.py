@@ -1741,7 +1741,8 @@ def _to_clauses(node: Formula, max_cells: int) -> list[frozenset[Atom]]:
 
 
 def _clause_formula(clause: Iterable[Atom]) -> Formula:
-    return make_and(AtomLeaf(atom) for atom in clause)
+    """Build a clause in the stable atom order used by decision keys."""
+    return make_and(AtomLeaf(atom) for atom in sorted(clause, key=_atom_key))
 
 
 def _disjunction(clauses: Iterable[frozenset[Atom]]) -> Formula:
