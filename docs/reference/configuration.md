@@ -40,7 +40,8 @@ constraints = ["urllib3<2"]
 # at-most-one or exactly-one set in [tool.nab].conflicts cannot
 # both be defaults.  A --groups selection that adds a second
 # member of such a set to a default forks the run into one
-# resolve per member.
+# resolve per member. The configured base-group and build-group
+# names may also be defaults.
 default-groups = ["dev"]
 
 # The group name a lock gives the project's own [project.dependencies],
@@ -56,9 +57,8 @@ base-group = "base"
 # describe the environment the project is built in as well as the one it
 # runs in.  Unset, a lock says nothing about how the project is built.
 # Set it and those requirements are resolved alongside the project's own,
-# and a pylock gates them behind that name, which it records in
-# dependency-groups but not in default-groups: an install that asks for
-# no group is installing the project, not building it.  The requirements
+# and a pylock selects them by that name, recorded in dependency-groups.
+# Include the name in default-groups to install them by default. Requirements
 # output formats carry no markers, so there they render as ordinary
 # pins.  The name must not be one [dependency-groups] declares, nor the
 # base-group name, and base-group must be set: unnamed, the project's
