@@ -40,6 +40,37 @@ def ms(text: str) -> MarkerSet:
 # --------------------------------------------------------------- acceptance
 
 
+@pytest.mark.parametrize("full", ["3.13.2+", "3.15.0a8+", "3.15.0a8+dev"])
+@pytest.mark.parametrize("include_minor", [False, True])
+@pytest.mark.parametrize(
+    "text",
+    [
+        'python_version >= "3.9"',
+        'python_version < "3.14"',
+        'python_full_version >= "3.9"',
+        'python_full_version < "3.14"',
+        '"3.9" <= python_full_version',
+        'python_full_version == "3.13.2"',
+        'python_full_version != "3.13.2"',
+        '"local" in python_full_version',
+        'python_full_version in "3.13.2+local"',
+    ],
+)
+def test_source_build_environment(full: str, text: str, *, include_minor: bool) -> None:
+    env = {"python_full_version": full}
+    if include_minor:
+        env["python_version"] = ".".join(full.split(".")[:2])
+    original = dict(env)
+    expected = Marker(text).evaluate(
+        {**env, "python_version": ".".join(full.split(".")[:2])}
+    )
+    marker = ms(text)
+    assert marker.evaluate(env) is expected
+    assert marker.restrict(env).is_full() is expected
+    assert marker.restrict(env).is_empty() is not expected
+    assert env == original
+
+
 def test_onnxruntime_extras_disjoint() -> None:
     a = ms('"cpu" in extras and "gpu" not in extras')
     b = ms('"gpu" in extras and "cpu" not in extras')

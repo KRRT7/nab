@@ -73,6 +73,21 @@ def _host_tags() -> tuple[Tag, ...]:
 
 
 class TestHostEnvironment:
+    @pytest.mark.parametrize(
+        ("full", "expected"),
+        [
+            ("3.13.2+", "3.13.2+local"),
+            ("3.15.0a8+", "3.15.0a8+local"),
+            ("3.15.0a8+dev", "3.15.0a8+dev"),
+            ("3.15.0rc1", "3.15.0rc1"),
+        ],
+    )
+    def test_source_build_versions(self, full: str, expected: str) -> None:
+        source = {**_HOST_ENV, "python_full_version": full}
+        env = host_environment(lambda: source)
+        assert env == {**source, "python_full_version": expected}
+        assert source["python_full_version"] == full
+
     def test_drops_non_string_values(self) -> None:
         """A source yielding a non-string value contributes nothing for it."""
         env = host_environment(lambda: {"os_name": "posix", "extras": frozenset()})
@@ -136,10 +151,12 @@ class TestTargetPythonIsComparable:
     """Every candidate's Requires-Python is tested against this target."""
 
     def test_an_unparseable_full_version_names_itself(self) -> None:
-        """A local-build version fails here, not once per candidate."""
-        with pytest.raises(ValueError, match="python_full_version '3.11.2\\+'"):
+        with pytest.raises(ValueError, match="python_full_version 'not-a-version'"):
             ResolveTarget.for_host(
-                env_source=lambda: {**_HOST_ENV, "python_full_version": "3.11.2+"},
+                env_source=lambda: {
+                    **_HOST_ENV,
+                    "python_full_version": "not-a-version",
+                },
                 tags_source=_host_tags,
             )
 

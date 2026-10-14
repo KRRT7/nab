@@ -364,8 +364,9 @@ class MarkerSet:
         :raises IntractableMarkerSet: if a version literal or value overruns the
             integer-string limit, or the marker nests past the stack.
         """
-        _markersets.reject_oversized_literals(self._tree, env)
-        return self._wrap(_markersets.restrict_tree(self._tree, env))
+        prepared = _markersets.prepare_environment(env)
+        _markersets.reject_oversized_literals(self._tree, prepared)
+        return self._wrap(_markersets.restrict_tree(self._tree, prepared))
 
     @_bounded
     def set_memberships(self) -> frozenset[tuple[str, str]]:
@@ -398,8 +399,9 @@ class MarkerSet:
         :raises IntractableMarkerSet: if a version literal or value overruns the
             integer-string limit, or the marker nests past the stack.
         """
-        _markersets.reject_oversized_literals(self._tree, env)
-        return _markersets.evaluate_tree(self._tree, env)
+        prepared = _markersets.prepare_environment(env)
+        _markersets.reject_oversized_literals(self._tree, prepared)
+        return _markersets.evaluate_tree(self._tree, prepared)
 
     def __contains__(self, env: Mapping[str, str | AbstractSet[str]]) -> bool:
         """Operator alias for :meth:`evaluate`, so ``env in marker_set`` reads."""

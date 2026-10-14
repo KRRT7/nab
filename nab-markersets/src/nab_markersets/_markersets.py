@@ -1258,6 +1258,14 @@ def guarded_product_size(sizes: Iterable[int], max_cells: int) -> int:
 # ------------------------------------------------------------------- evaluation
 
 
+def prepare_environment(env: Mapping[str, object]) -> Mapping[str, object]:
+    """Repair legacy CPython full versions for evaluation and restriction."""
+    full = env.get("python_full_version")
+    if isinstance(full, str) and full.endswith("+"):
+        return {**env, "python_full_version": f"{full}local"}
+    return env
+
+
 def as_name_set(value: object) -> frozenset[str]:
     """Normalise a set-variable value: a non-empty str is one PEP 685 name."""
     if isinstance(value, str):
