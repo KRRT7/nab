@@ -542,6 +542,13 @@ def _normalize_upload_time(upload_time: datetime | None) -> datetime | None:
         raise LockValidationError(msg) from e
 
 
+def _validate_artifact_size(size: int | None) -> int | None:
+    if size is not None and size < 0:
+        msg = "artifact size must be non-negative"
+        raise LockValidationError(msg)
+    return size
+
+
 def _wheel_to_package(wheel: WheelArtifact, *, lock_dir: Path) -> PackageWheel:
     """Convert a wheel artefact to its PEP 751 ``packages.wheels`` entry.
 
@@ -550,18 +557,19 @@ def _wheel_to_package(wheel: WheelArtifact, *, lock_dir: Path) -> PackageWheel:
     file so the lockfile stays portable.  A remote wheel records its
     ``url`` verbatim.
     """
+    size = _validate_artifact_size(wheel.size)
     if wheel.local_path is not None:
         return PackageWheel(
             name=wheel.filename,
             path=_relativize_path(wheel.local_path.resolve(), lock_dir),
-            size=wheel.size,
+            size=size,
             hashes=dict(sorted(wheel.hashes)),
             upload_time=_normalize_upload_time(wheel.upload_time),
         )
     return PackageWheel(
         name=wheel.filename,
         url=wheel.url,
-        size=wheel.size,
+        size=size,
         hashes=dict(sorted(wheel.hashes)),
         upload_time=_normalize_upload_time(wheel.upload_time),
     )
@@ -572,18 +580,19 @@ def _sdist_to_package(sdist: SdistArtifact, *, lock_dir: Path) -> PackageSdist:
 
     See :func:`_wheel_to_package` for the ``local_path`` handling.
     """
+    size = _validate_artifact_size(sdist.size)
     if sdist.local_path is not None:
         return PackageSdist(
             name=sdist.filename,
             path=_relativize_path(sdist.local_path.resolve(), lock_dir),
-            size=sdist.size,
+            size=size,
             hashes=dict(sorted(sdist.hashes)),
             upload_time=_normalize_upload_time(sdist.upload_time),
         )
     return PackageSdist(
         name=sdist.filename,
         url=sdist.url,
-        size=sdist.size,
+        size=size,
         hashes=dict(sorted(sdist.hashes)),
         upload_time=_normalize_upload_time(sdist.upload_time),
     )

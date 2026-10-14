@@ -4466,6 +4466,64 @@ class TestVcsRequestedRevision:
         assert "requested-revision" not in data["packages"][0]["vcs"]
 
 
+class TestArtifactSize:
+    """PEP 751 ``packages.wheels/sdist.size`` emission."""
+
+    @staticmethod
+    def _pin_with_artifact(artifact: WheelArtifact | SdistArtifact) -> IndexPin:
+        return IndexPin(
+            name="foo",
+            version="1.0",
+            index="pypi",
+            wheels=(artifact,) if isinstance(artifact, WheelArtifact) else (),
+            sdist=artifact if isinstance(artifact, SdistArtifact) else None,
+        )
+
+    @pytest.mark.parametrize(
+        "artifact_factory", [_wheel, _sdist], ids=["wheel", "sdist"]
+    )
+    def test_writer_rejects_negative_size_before_writing(
+        self,
+        tmp_path: Path,
+        artifact_factory: Callable[[], WheelArtifact | SdistArtifact],
+    ) -> None:
+        artifact = artifact_factory()
+        artifact.size = -1
+        output = tmp_path / "pylock.toml"
+        output.write_text("existing lock", encoding="utf-8")
+
+        with pytest.raises(LockValidationError, match="size must be non-negative"):
+            write_lock(
+                LockInput(targets=_one({"foo": self._pin_with_artifact(artifact)})),
+                output_path=output,
+            )
+        assert output.read_text(encoding="utf-8") == "existing lock"
+
+    @pytest.mark.parametrize(
+        "artifact_factory", [_wheel, _sdist], ids=["wheel", "sdist"]
+    )
+    @pytest.mark.parametrize("size", [0, 1], ids=["empty", "one-byte"])
+    def test_writer_emits_non_negative_size(
+        self,
+        artifact_factory: Callable[[], WheelArtifact | SdistArtifact],
+        size: int,
+    ) -> None:
+        artifact = artifact_factory()
+        artifact.size = size
+
+        package = tomllib.loads(
+            write_lock(
+                LockInput(targets=_one({"foo": self._pin_with_artifact(artifact)}))
+            )
+        )["packages"][0]
+        record = (
+            package["wheels"][0]
+            if isinstance(artifact, WheelArtifact)
+            else package["sdist"]
+        )
+        assert record["size"] == size
+
+
 class TestUploadTime:
     """PEP 751 ``packages.wheels/sdist.upload-time`` emission."""
 
