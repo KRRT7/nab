@@ -25,6 +25,10 @@ jobs:
       workspaces: ${{ steps.select.outputs.workspaces }}
       test-paths: ${{ steps.select.outputs.test-paths }}
       resolver: ${{ steps.select.outputs.resolver }}
+      benchmarks: ${{ steps.select.outputs.benchmarks }}
+      dists: ${{ steps.select.outputs.dists }}
+      standalone: ${{ steps.select.outputs.standalone }}
+      allowed-skips: ${{ steps.select.outputs.allowed-skips }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
         with:
@@ -84,6 +88,8 @@ jobs:
           nox -s tests -- "${workspaces[@]}"
 
   benchmarks:
+    needs: select
+    if: needs.select.outputs.benchmarks == 'true'
     name: benchmark harness / ${{ matrix.os }} / ${{ matrix.python-version }}
     runs-on: ${{ matrix.os }}-latest
     timeout-minutes: 20
@@ -206,6 +212,8 @@ jobs:
         run: python -m pytest -m crosshair nab-resolver/tests
 
   dists:
+    needs: select
+    if: needs.select.outputs.dists == 'true'
     name: Build and install distributions
     runs-on: ubuntu-latest
     timeout-minutes: 20
@@ -235,6 +243,8 @@ jobs:
         run: nox -s dists
 
   standalone:
+    needs: select
+    if: needs.select.outputs.standalone == 'true'
     name: nab-markersets on released packaging
     runs-on: ubuntu-latest
     timeout-minutes: 15
@@ -281,5 +291,5 @@ jobs:
       - name: Decide whether the needed jobs succeeded or failed
         uses: re-actors/alls-green@b5b5b37504aa4183270bd3d855c52a67f212be35  # v1.3.0
         with:
-          allowed-skips: ${{ needs.select.outputs.resolver == 'false' && 'crosshair-tests' || '' }}
+          allowed-skips: ${{ needs.select.outputs.allowed-skips }}
           jobs: ${{ toJSON(needs) }}
