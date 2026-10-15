@@ -81,6 +81,8 @@ exclude = [
 # tasks/refresh-locks.sh. Local dev uses hatch envs from hatch.toml.
 [dependency-groups]
 tests = [
+    # Hatchling's editable hook requires this beyond [build-system].requires.
+    "editables~=0.3",
     "pytest>=9",
     "pytest-cov>=7",
     "pytest-timeout>=2.3",

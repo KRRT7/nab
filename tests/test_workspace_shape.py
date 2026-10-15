@@ -82,10 +82,11 @@ MEMBERS = sorted(
 # A dependency specifier down to its bare name.
 _REQUIREMENT_NAME = re.compile(r"^[^\[=<>!~;\s]+")
 
-# `run: pip install --no-deps -e a -e b`, the editable installs the property and
+# `run: pip install --no-deps --no-build-isolation -e a -e b`, the property and
 # crosshair jobs do outside nox.
 _EDITABLE_INSTALL = re.compile(
-    r"^\s*run: pip install --no-deps ((?:-e \S+ ?)+)$", re.MULTILINE
+    r"^\s*run: pip install --no-deps --no-build-isolation ((?:-e \S+ ?)+)$",
+    re.MULTILINE,
 )
 
 # `packages-dir: dist/<package>`, one per publish step.
@@ -156,6 +157,64 @@ def _session(name: str) -> ast.FunctionDef:
         for node in ast.walk(ast.parse(NOXFILE.read_text(encoding="utf-8")))
         if isinstance(node, ast.FunctionDef) and node.name == name
     )
+
+
+class _Installer:
+    """Record the package-install boundary used by the nox helpers."""
+
+    def __init__(self) -> None:
+        self.calls: list[tuple[str, ...]] = []
+
+    def install(self, *args: str) -> None:
+        self.calls.append(args)
+
+
+def _install_helpers() -> dict[str, Any]:
+    """Load the installation functions without adding nox to test dependencies."""
+    future = ast.ImportFrom(
+        module="__future__", names=[ast.alias(name="annotations")], level=0
+    )
+    module = ast.fix_missing_locations(
+        ast.Module(
+            body=[future, _session("_install_lock"), _session("_install_editable")],
+            type_ignores=[],
+        )
+    )
+    namespace: dict[str, Any] = {"BUILD_LOCK": _literal(NOXFILE, "BUILD_LOCK")}
+    # Loading only these functions avoids importing the optional nox runner.
+    exec(compile(module, str(NOXFILE), "exec"), namespace)  # noqa: S102
+    return namespace
+
+
+def test_install_helper_prepares_the_locked_build_backend() -> None:
+    installer = _Installer()
+    _install_helpers()["_install_lock"](installer, "dependencies.toml")
+    assert installer.calls == [
+        ("--upgrade", "pip>=26.1"),
+        ("-r", "dependencies.toml"),
+        ("-r", ".github/requirements/pylock.build.toml"),
+    ]
+
+
+@pytest.mark.parametrize("packages", [[], ["nab-resolver", "nab-provider"]])
+def test_editable_helper_uses_the_prepared_build_environment(
+    packages: list[str],
+) -> None:
+    installer = _Installer()
+    _install_helpers()["_install_editable"](installer, packages)
+    if packages:
+        assert installer.calls == [
+            (
+                "--no-deps",
+                "--no-build-isolation",
+                "-e",
+                "nab-resolver",
+                "-e",
+                "nab-provider",
+            )
+        ]
+    else:
+        assert installer.calls == []
 
 
 def _session_editables(name: str) -> list[str]:
@@ -521,7 +580,11 @@ def test_the_standalone_session_installs_the_algebra_alone() -> None:
     That session is the only run where `nab_markersets` binds released
     packaging, and nothing about it would go red if it stopped doing so.
     """
-    assert _session_installs("standalone") == ["-e", "nab-markersets[packaging]"]
+    assert _session_installs("standalone") == [
+        "--no-build-isolation",
+        "-e",
+        "nab-markersets[packaging]",
+    ]
 
 
 def test_cli_log_handlers_reach_every_released_package() -> None:

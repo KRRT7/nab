@@ -116,10 +116,11 @@ TYPE_CHECKERS = {
 
 
 def _install_lock(session: nox.Session, lock: str) -> None:
-    """Install a pinned dependency lock."""
+    """Install pinned dependencies and the editable build backend."""
     # Installing a PEP 751 lock needs a recent pip.
     session.install("--upgrade", "pip>=26.1")
     session.install("-r", lock)
+    session.install("-r", BUILD_LOCK)
 
 
 def _install_editable(session: nox.Session, packages: list[str]) -> None:
@@ -129,7 +130,7 @@ def _install_editable(session: nox.Session, packages: list[str]) -> None:
 
     # --no-deps keeps the run pinned to the locked closure.
     editable_args = [arg for package in packages for arg in ("-e", package)]
-    session.install("--no-deps", *editable_args)
+    session.install("--no-deps", "--no-build-isolation", *editable_args)
 
 
 def _install(session: nox.Session, lock: str, editables: list[str]) -> None:
@@ -272,7 +273,7 @@ def standalone(session: nox.Session) -> None:
     # The extra, and without --no-deps, so the range nab-markersets declares is
     # what pip resolves. The lock already pins a packaging inside that range,
     # so nothing moves; a range that stopped covering it would fail here.
-    session.install("-e", "nab-markersets[packaging]")
+    session.install("--no-build-isolation", "-e", "nab-markersets[packaging]")
 
     session.run("python", "-m", "pytest", "-n", "auto", "nab-markersets/tests")
 
