@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import ast
 import importlib.util
+import json
 import shutil
 import subprocess
 from pathlib import Path
@@ -185,8 +186,8 @@ def test_main_and_failed_comparisons_run_everything(
     select_tests.main()
     assert output.read_text(encoding="utf-8").splitlines() == [
         f"{key}={value}"
-        for key, value in select_tests.selection_outputs(
-            list(WORKSPACES), WORKSPACES
+        for key, value in select_tests.job_outputs(
+            list(WORKSPACES), WORKSPACES, None
         ).items()
     ]
 
@@ -220,7 +221,45 @@ def test_pr_comparison_writes_selected_arguments(
         "workspaces=project umbrella",
         "test-paths=nab-provider/tests nab-project/tests nab-index/tests tests",
         "resolver=false",
+        "benchmarks=true",
+        "dists=true",
+        "standalone=false",
+        'allowed-skips=["crosshair-tests", "standalone"]',
     ]
+
+
+@pytest.mark.parametrize(
+    ("paths", "expected"),
+    [
+        (None, {"benchmarks", "dists", "standalone"}),
+        ([], {"benchmarks", "dists", "standalone"}),
+        (["docs/index.md"], set()),
+        (["nab-index/src/nab_index/client.py"], {"benchmarks", "dists"}),
+        (["nab-markersets/tests/test_sets.py"], {"benchmarks", "dists", "standalone"}),
+        (["nab-project/benchmarks/scenarios.py"], {"benchmarks"}),
+        (["tasks/build_dists.py"], {"dists"}),
+        (["docs/index.md", "pyproject.toml"], {"benchmarks", "dists", "standalone"}),
+        (
+            ["docs/index.md", "new-package/file.py"],
+            {"benchmarks", "dists", "standalone"},
+        ),
+        (["nab-markersets-other/file.py"], {"benchmarks", "dists", "standalone"}),
+    ],
+)
+def test_auxiliary_jobs_and_allowed_skips(
+    paths: list[str] | None, expected: set[str]
+) -> None:
+    selected = select_tests.select_workspaces(paths or [], WORKSPACES)
+    outputs = select_tests.job_outputs(selected, WORKSPACES, paths)
+    assert {
+        job for job in ("benchmarks", "dists", "standalone") if outputs[job] == "true"
+    } == expected
+    skipped = set(json.loads(outputs["allowed-skips"]))
+    assert (
+        skipped & {"benchmarks", "dists", "standalone"}
+        == {"benchmarks", "dists", "standalone"} - expected
+    )
+    assert ("crosshair-tests" in skipped) == (outputs["resolver"] == "false")
 
 
 @pytest.mark.parametrize(

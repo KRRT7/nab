@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import ast
+import json
 import os
 import subprocess
 from pathlib import Path
@@ -128,6 +129,62 @@ def selection_outputs(
     }
 
 
+def auxiliary_outputs(paths: list[str] | None) -> dict[str, str]:
+    """Select auxiliary jobs only when every changed path is understood."""
+    jobs = {"benchmarks", "dists", "standalone"}
+    selected: set[str] = set()
+    if not paths:
+        selected = jobs
+    for path in paths or []:
+        package = path.split("/", 1)[0]
+        if package == "docs":
+            continue
+        if package in {"nab-resolver", "nab-project"} and path.startswith(
+            f"{package}/benchmarks/"
+        ):
+            selected.add("benchmarks")
+        elif package in {
+            "nab-resolver",
+            "nab-markersets",
+            "nab-provider",
+            "nab-index",
+            "nab-project",
+            "src",
+            "tests",
+        }:
+            selected.update({"benchmarks", "dists"})
+            if package == "nab-markersets":
+                selected.add("standalone")
+        elif path in {"README.md", "LICENSE", "LICENSE.txt"} or path in {
+            "tasks/build_dists.py",
+            "tasks/check_dists.py",
+            "tasks/verify_published.py",
+        }:
+            selected.add("dists")
+        else:
+            selected = jobs
+            break
+    return {job: str(job in selected).lower() for job in sorted(jobs)}
+
+
+def job_outputs(
+    selected: list[str],
+    workspaces: dict[str, tuple[list[str], list[str], list[str]]],
+    paths: list[str] | None,
+) -> dict[str, str]:
+    """Permit only the skips justified by the same job-selection outputs."""
+    auxiliary = auxiliary_outputs(paths)
+    outputs = {**selection_outputs(selected, workspaces), **auxiliary}
+    conditional = {
+        "resolver": "crosshair-tests",
+        **{job: job for job in auxiliary},
+    }
+    outputs["allowed-skips"] = json.dumps(
+        [job for flag, job in conditional.items() if outputs[flag] == "false"]
+    )
+    return outputs
+
+
 def main() -> None:
     """Write selection outputs; a failed Git comparison runs every workspace."""
     parser = argparse.ArgumentParser(description=__doc__)
@@ -137,15 +194,15 @@ def main() -> None:
     args = parser.parse_args()
     workspaces = workspace_inputs(REPO_ROOT)
     selected = list(workspaces)
+    paths = None
     if args.base:
         try:
-            selected = select_workspaces(
-                changed_paths(REPO_ROOT, args.base, args.head), workspaces
-            )
+            paths = changed_paths(REPO_ROOT, args.base, args.head)
+            selected = select_workspaces(paths, workspaces)
         except subprocess.CalledProcessError:
             print("Git comparison failed; selecting every workspace.")
 
-    outputs = selection_outputs(selected, workspaces)
+    outputs = job_outputs(selected, workspaces, paths)
     with args.output.open("a", encoding="utf-8") as output:
         for name, value in outputs.items():
             print(f"{name}={value}")
