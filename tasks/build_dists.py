@@ -18,6 +18,7 @@ import os
 import shutil
 import subprocess
 import sys
+import tarfile
 import tempfile
 import zipfile
 from pathlib import Path
@@ -176,6 +177,60 @@ def smoke_test(dist: Path) -> None:
                 raise SystemExit(msg)
 
 
+class ArchiveSize:
+    """A built archive's file size and total unpacked member bytes."""
+
+    __slots__ = ("compressed_bytes", "filename", "unpacked_bytes")
+
+    def __init__(
+        self, filename: str, compressed_bytes: int, unpacked_bytes: int
+    ) -> None:
+        """Store one archive's measured byte counts."""
+        self.filename = filename
+        self.compressed_bytes = compressed_bytes
+        self.unpacked_bytes = unpacked_bytes
+
+
+def archive_size(path: Path) -> ArchiveSize:
+    """Read archive sizes without extracting their contents."""
+    if path.name.endswith(".whl"):
+        with zipfile.ZipFile(path) as wheel:
+            unpacked = sum(member.file_size for member in wheel.infolist())
+    elif path.name.endswith(".tar.gz"):
+        with tarfile.open(path) as sdist:
+            unpacked = sum(member.size for member in sdist)
+    else:
+        msg = f"unsupported distribution archive: {path.name}"
+        raise SystemExit(msg)
+    return ArchiveSize(path.name, path.stat().st_size, unpacked)
+
+
+def report_sizes(dist: Path) -> None:
+    """Report artifact bytes in the build log and optional Actions summary."""
+    sizes = [
+        archive_size(path)
+        for path in sorted(dist.rglob("*"))
+        if path.is_file() and path.name.endswith((".whl", ".tar.gz"))
+    ]
+    compressed = sum(item.compressed_bytes for item in sizes)
+    unpacked = sum(item.unpacked_bytes for item in sizes)
+    lines = [
+        "| Artifact | Archive bytes | Unpacked bytes |",
+        "| --- | ---: | ---: |",
+        *(
+            f"| {item.filename} | {item.compressed_bytes} | {item.unpacked_bytes} |"
+            for item in sizes
+        ),
+        f"| Total | {compressed} | {unpacked} |",
+    ]
+    table = "\n".join(lines) + "\n"
+    print(table)
+    summary = os.environ.get("GITHUB_STEP_SUMMARY")
+    if summary:
+        with Path(summary).open("a", encoding="utf-8") as stream:
+            stream.write("\n" + table)
+
+
 def main() -> None:
     """Build, verify reproducibility, check metadata, and smoke-test."""
     _require_tools("git")
@@ -184,6 +239,7 @@ def main() -> None:
     verify_reproducible(dist, source_date_epoch)
     twine_check(dist)
     smoke_test(dist)
+    report_sizes(dist)
     print("dist/ built, reproducible, metadata-checked, and smoke-tested.")
 
 

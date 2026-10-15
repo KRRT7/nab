@@ -242,6 +242,7 @@ def main() -> None:
             build_dists.wheel_file(dist_root, "nab-provider"),
             _sdist(dist_root, "nab-provider"),
         )
+        build_dists.report_sizes(dist_root)
 
     print("dists built, installed from sdists and wheels, and license-checked.")
 

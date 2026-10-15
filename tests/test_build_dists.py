@@ -4,7 +4,9 @@ from __future__ import annotations
 
 import hashlib
 import importlib.util
+import io
 import sys
+import tarfile
 import zipfile
 from pathlib import Path
 from types import ModuleType
@@ -225,3 +227,54 @@ def test_published_verification_compares_the_built_bytes(
     else:
         with pytest.raises(published.VerificationError, match="published bytes differ"):
             published._check_once("nab", "0.0.3", filename, "repository", tmp_path)
+
+
+@pytest.mark.parametrize("kind", ["wheel", "sdist"])
+def test_archive_sizes_count_member_bytes(tmp_path: Path, kind: str) -> None:
+    payload = b"archive member\n"
+    if kind == "wheel":
+        path = tmp_path / "demo-1-py3-none-any.whl"
+        with zipfile.ZipFile(path, "w", compression=zipfile.ZIP_DEFLATED) as archive:
+            archive.writestr("demo.py", payload)
+    else:
+        path = tmp_path / "demo-1.tar.gz"
+        with tarfile.open(path, "w:gz") as archive:
+            member = tarfile.TarInfo("demo-1/demo.py")
+            member.size = len(payload)
+            archive.addfile(member, io.BytesIO(payload))
+    measured = build_dists.archive_size(path)
+    assert measured.filename == path.name
+    assert measured.compressed_bytes == path.stat().st_size
+    assert measured.unpacked_bytes == len(payload)
+
+
+def test_size_summary_reports_numeric_rows_and_appends(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    wheel = tmp_path / "demo-1-py3-none-any.whl"
+    with zipfile.ZipFile(wheel, "w") as archive:
+        archive.writestr("demo.py", b"abc")
+    directory = tmp_path / "nested"
+    directory.mkdir()
+    other = directory / "other-1-py3-none-any.whl"
+    with zipfile.ZipFile(other, "w") as archive:
+        archive.writestr("other.py", b"12345")
+    summary = tmp_path / "summary.md"
+    summary.write_bytes(b"existing\n")
+    monkeypatch.setenv("GITHUB_STEP_SUMMARY", str(summary))
+    build_dists.report_sizes(tmp_path)
+
+    expected = [
+        (wheel.stat().st_size, 3),
+        (other.stat().st_size, 5),
+        (wheel.stat().st_size + other.stat().st_size, 8),
+    ]
+    for rendered in (capsys.readouterr().out, summary.read_text()):
+        rows = [
+            line.split("|") for line in rendered.splitlines() if line.startswith("|")
+        ]
+        numeric = [
+            (int(row[2]), int(row[3])) for row in rows if row[2].strip().isdigit()
+        ]
+        assert numeric == expected
+    assert summary.read_bytes().startswith(b"existing\n")
