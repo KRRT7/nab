@@ -164,19 +164,26 @@ class _Installer:
 
     def __init__(self) -> None:
         self.calls: list[tuple[str, ...]] = []
+        self.commands: list[tuple[str, ...]] = []
 
     def install(self, *args: str) -> None:
         self.calls.append(args)
 
+    def run(self, *args: str) -> None:
+        self.commands.append(args)
 
-def _install_helpers() -> dict[str, Any]:
-    """Load the installation functions without adding nox to test dependencies."""
+
+def _nox_helpers(*names: str) -> dict[str, Any]:
+    """Load selected functions without adding nox to test dependencies."""
+    definitions = [_session(name) for name in names]
+    for definition in definitions:
+        definition.decorator_list = []
     future = ast.ImportFrom(
         module="__future__", names=[ast.alias(name="annotations")], level=0
     )
     module = ast.fix_missing_locations(
         ast.Module(
-            body=[future, _session("_install_lock"), _session("_install_editable")],
+            body=[future, *definitions],
             type_ignores=[],
         )
     )
@@ -188,7 +195,7 @@ def _install_helpers() -> dict[str, Any]:
 
 def test_install_helper_prepares_the_locked_build_backend() -> None:
     installer = _Installer()
-    _install_helpers()["_install_lock"](installer, "dependencies.toml")
+    _nox_helpers("_install_lock")["_install_lock"](installer, "dependencies.toml")
     assert installer.calls == [
         ("--upgrade", "pip>=26.1"),
         ("-r", "dependencies.toml"),
@@ -201,7 +208,7 @@ def test_editable_helper_uses_the_prepared_build_environment(
     packages: list[str],
 ) -> None:
     installer = _Installer()
-    _install_helpers()["_install_editable"](installer, packages)
+    _nox_helpers("_install_editable")["_install_editable"](installer, packages)
     if packages:
         assert installer.calls == [
             (
@@ -215,6 +222,27 @@ def test_editable_helper_uses_the_prepared_build_environment(
         ]
     else:
         assert installer.calls == []
+
+
+@pytest.mark.parametrize("checker", ["mypy", "pyright", "ty", "pyrefly", "zuban"])
+def test_type_session_selects_its_own_checker_lock(checker: str) -> None:
+    session = _Installer()
+    locks = []
+    helpers = _nox_helpers("types")
+    helpers.update(
+        WORKSPACES=_literal(NOXFILE, "WORKSPACES"),
+        TYPE_CHECKERS={checker: [checker]},
+        _install=lambda session, lock, editables: locks.append(lock),
+    )
+    helpers["types"](session, checker)
+    assert locks == [f".github/requirements/pylock.{checker}.toml"]
+    assert session.commands == [(checker,)]
+
+    lock = _toml(REPO_ROOT / locks[0])
+    checker_names = {"mypy", "pyright", "ty", "pyrefly", "zuban"}
+    assert {package["name"] for package in lock["packages"]} & checker_names == {
+        checker
+    }
 
 
 def _session_editables(name: str) -> list[str]:

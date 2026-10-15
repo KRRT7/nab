@@ -80,9 +80,17 @@ exclude = [
 # Dependency groups feed `nab lock` for CI lockfiles; regenerate via
 # tasks/refresh-locks.sh. Local dev uses hatch envs from hatch.toml.
 [dependency-groups]
-tests = [
+editable-build = [
     # Hatchling's editable hook requires this beyond [build-system].requires.
     "editables~=0.3",
+]
+http-backends = [
+    "httpx[http2]>=0.28",
+    "httpx2[http2]>=2.0",
+]
+tests = [
+    {include-group = "editable-build"},
+    {include-group = "http-backends"},
     "pytest>=9",
     "pytest-cov>=7",
     "pytest-timeout>=2.3",
@@ -90,8 +98,6 @@ tests = [
     "coverage>=7",
     "hypothesis>=6.100",
     "respx>=0.22",
-    "httpx[http2]>=0.28",
-    "httpx2[http2]>=2.0",
     "tomlkit>=0.13",
 ]
 crosshair = [
@@ -99,14 +105,38 @@ crosshair = [
     "crosshair-tool>=0.0.104",
     "hypothesis-crosshair>=0.0.28",
 ]
-types = [
-    {include-group = "tests"},
-    "mypy>=2.4.0",
-    "pyright>=1.1.414",
-    "ty>=0.0.85",
-    "pyrefly>=1.3.2",
+type-common = [
+    {include-group = "editable-build"},
+    {include-group = "http-backends"},
     "typing_extensions>=4.10",
+]
+mypy = [
+    {include-group = "type-common"},
+    "mypy>=2.4.0",
+]
+pyright = [
+    {include-group = "tests"},
+    {include-group = "type-common"},
+    "pyright>=1.1.414",
+]
+ty = [
+    {include-group = "type-common"},
+    "ty>=0.0.85",
+]
+pyrefly = [
+    {include-group = "type-common"},
+    "pyrefly>=1.3.2",
+]
+zuban = [
+    {include-group = "type-common"},
     "zuban>=0.10.0",
+]
+types = [
+    {include-group = "mypy"},
+    {include-group = "pyright"},
+    {include-group = "ty"},
+    {include-group = "pyrefly"},
+    {include-group = "zuban"},
 ]
 lint = [
     "ruff>=0.16.10",
