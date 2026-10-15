@@ -12,12 +12,14 @@ Run through hatch::
 
 from __future__ import annotations
 
+import email
 import hashlib
 import os
 import shutil
 import subprocess
 import sys
 import tempfile
+import zipfile
 from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
@@ -123,19 +125,55 @@ def twine_check(dist: Path) -> None:
     _run([sys.executable, "-m", "twine", "check", "--strict", *artifacts])
 
 
+def wheel_file(dist: Path, package: str) -> Path:
+    """Return the sole built wheel for one release package."""
+    wheels = sorted((dist / package).glob("*.whl"))
+    if len(wheels) != 1:
+        found = [path.name for path in wheels]
+        msg = f"expected exactly one wheel for {package}, found {found}"
+        raise SystemExit(msg)
+    return wheels[0]
+
+
+def wheel_version(wheel: Path) -> str:
+    """Read the version of an artifact before checking its installed CLI."""
+    with zipfile.ZipFile(wheel) as archive:
+        metadata_files = [
+            name for name in archive.namelist() if name.endswith(".dist-info/METADATA")
+        ]
+        if len(metadata_files) != 1:
+            msg = f"{wheel.name}: expected exactly one METADATA file"
+            raise SystemExit(msg)
+        metadata = email.message_from_bytes(archive.read(metadata_files[0]))
+    version = metadata["Version"]
+    if not version:
+        msg = f"{wheel.name}: METADATA has no Version"
+        raise SystemExit(msg)
+    return version
+
+
 def smoke_test(dist: Path) -> None:
-    """Install the built nab into a throwaway venv and run ``nab --help``."""
+    """Install the built wheels, exercise help, and check both entry versions."""
+    wheels = [wheel_file(dist, package) for package in PACKAGES]
+    version = wheel_version(wheel_file(dist, "nab"))
     with tempfile.TemporaryDirectory() as tmp:
         venv = Path(tmp) / "venv"
         _run([sys.executable, "-m", "venv", str(venv)])
         bindir = venv / ("Scripts" if os.name == "nt" else "bin")
         python = str(bindir / "python")
         _run([python, "-m", "pip", "install", "--upgrade", "pip"])
-        find_links: list[str] = []
-        for package in PACKAGES:
-            find_links += ["--find-links", str(dist / package)]
-        _run([python, "-m", "pip", "install", *find_links, "nab"])
-        _run([str(bindir / "nab"), "--help"])
+        _run([python, "-m", "pip", "install", *(str(wheel) for wheel in wheels)])
+        console = shutil.which("nab", path=str(bindir))
+        if console is None:
+            msg = f"the built wheels installed no nab command in {bindir}"
+            raise SystemExit(msg)
+        _run([console, "--help"])
+        for command in ([python, "-m", "nab"], [console]):
+            output = _run([*command, "--version"], capture=True)
+            if output.strip() != f"nab {version}":
+                shown = " ".join(command)
+                msg = f"{shown} --version reported {output!r}, expected nab {version}"
+                raise SystemExit(msg)
 
 
 def main() -> None:

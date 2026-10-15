@@ -108,11 +108,6 @@ def _only(paths: list[Path], what: str, package: str) -> Path:
     raise SystemExit(msg)
 
 
-def _wheel(dist_root: Path, package: str) -> Path:
-    """Return the built wheel for a package."""
-    return _only(sorted((dist_root / package).glob("*.whl")), "wheel", package)
-
-
 def _sdist(dist_root: Path, package: str) -> Path:
     """Return the built sdist for a package."""
     return _only(sorted((dist_root / package).glob("*.tar.gz")), "sdist", package)
@@ -168,8 +163,8 @@ def install_wheels(dist_root: Path, scratch: Path) -> None:
     ``[project.scripts]`` and ``src/nab/__main__.py`` name the entry
     independently of each other, so both are run.
     """
-    wheels = [str(_wheel(dist_root, package)) for package in PACKAGES]
-    version = _wheel_version(_wheel(dist_root, "nab"))
+    wheels = [str(build_dists.wheel_file(dist_root, package)) for package in PACKAGES]
+    version = build_dists.wheel_version(build_dists.wheel_file(dist_root, "nab"))
     python = _make_venv(scratch / "wheels")
     _run([str(python), "-m", "pip", "install", *wheels])
     # nab_markersets' package root binds no names, so importing it proves
@@ -178,18 +173,6 @@ def install_wheels(dist_root: Path, scratch: Path) -> None:
     _run([str(python), "-c", f"import {', '.join(smoke)}"])
     _check_version([str(python), "-m", "nab"], version)
     _check_version([_console_script(python)], version)
-
-
-def _wheel_version(wheel: Path) -> str:
-    """Return the Version recorded in a wheel's METADATA."""
-    with zipfile.ZipFile(wheel) as archive:
-        info = _dist_info(archive.namelist())
-        metadata = email.message_from_string(archive.read(f"{info}/METADATA").decode())
-    version = metadata["Version"]
-    if not version:
-        msg = f"{wheel.name}: METADATA has no Version"
-        raise SystemExit(msg)
-    return version
 
 
 def check_wheel_license(wheel: Path) -> None:
@@ -253,10 +236,10 @@ def main() -> None:
         install_wheels(dist_root, workdir)
 
         for package in PACKAGES:
-            check_wheel_license(_wheel(dist_root, package))
+            check_wheel_license(build_dists.wheel_file(dist_root, package))
             check_sdist_license(_sdist(dist_root, package))
         check_vendored_licenses(
-            _wheel(dist_root, "nab-provider"),
+            build_dists.wheel_file(dist_root, "nab-provider"),
             _sdist(dist_root, "nab-provider"),
         )
 
