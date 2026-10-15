@@ -308,7 +308,7 @@ class YankPreference:
                 base = canonicalize_name(requirement.name)
                 text = f"{candidate.package}=={candidate.label} requires {requirement}"
                 declarations.setdefault(base, []).append((requirement, text))
-                pending.extend(waiting.pop(base, ()))
+                pending.extend(sorted(waiting.pop(base, ())))
         if expanded != set(selected):
             message = "cannot explain yanked admission: selection is not rooted"
             raise ResolutionInvariantError(message)
