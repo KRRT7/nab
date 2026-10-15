@@ -425,3 +425,27 @@ def test_pending_json_still_obeys_the_shared_deadline(
             "nab", "0.0.3", filename, "repository", tmp_path, 20.0, digests={}
         )
     assert waits == [15.0, 5.0]
+
+
+@pytest.mark.parametrize(
+    ("output", "valid"),
+    [("nab 0.0.3\n", True), ("nab 0.0.30\n", False), ("not nab 0.0.3", False)],
+)
+def test_distribution_version_check_requires_the_exact_built_version(
+    monkeypatch: pytest.MonkeyPatch, output: str, *, valid: bool
+) -> None:
+    monkeypatch.syspath_prepend(str(_PATH.parent))
+    monkeypatch.setitem(sys.modules, "build_dists", build_dists)
+    spec = importlib.util.spec_from_file_location(
+        "nab_check_dists", _PATH.with_name("check_dists.py")
+    )
+    assert spec is not None
+    assert spec.loader is not None
+    checks = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(checks)
+    monkeypatch.setattr(checks, "_capture", lambda command: output)
+    if valid:
+        checks._check_version(["nab"], "0.0.3")
+    else:
+        with pytest.raises(SystemExit, match="expected"):
+            checks._check_version(["nab"], "0.0.3")
