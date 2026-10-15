@@ -20,6 +20,11 @@ environments = [
     "python_version == \"3.14\" and sys_platform == \"darwin\" and platform_machine == \"arm64\" and os_name == \"posix\" and platform_python_implementation == \"CPython\"",
     "python_version == \"3.14\" and sys_platform == \"darwin\" and platform_machine == \"x86_64\" and os_name == \"posix\" and platform_python_implementation == \"CPython\"",
     "python_version == \"3.14\" and sys_platform == \"win32\" and platform_machine == \"AMD64\" and os_name == \"nt\" and platform_python_implementation == \"CPython\"",
+    "python_version == \"3.15\" and sys_platform == \"linux\" and platform_machine == \"x86_64\" and os_name == \"posix\" and platform_python_implementation == \"CPython\"",
+    "python_version == \"3.15\" and sys_platform == \"linux\" and platform_machine == \"aarch64\" and os_name == \"posix\" and platform_python_implementation == \"CPython\"",
+    "python_version == \"3.15\" and sys_platform == \"darwin\" and platform_machine == \"arm64\" and os_name == \"posix\" and platform_python_implementation == \"CPython\"",
+    "python_version == \"3.15\" and sys_platform == \"darwin\" and platform_machine == \"x86_64\" and os_name == \"posix\" and platform_python_implementation == \"CPython\"",
+    "python_version == \"3.15\" and sys_platform == \"win32\" and platform_machine == \"AMD64\" and os_name == \"nt\" and platform_python_implementation == \"CPython\"",
     "python_version == \"3.10\" and sys_platform == \"linux\" and platform_machine == \"x86_64\" and os_name == \"posix\" and platform_python_implementation == \"CPython\" and python_full_version < \"3.10.2\"",
     "python_version == \"3.10\" and sys_platform == \"linux\" and platform_machine == \"x86_64\" and os_name == \"posix\" and platform_python_implementation == \"CPython\" and python_full_version >= \"3.10.2.dev0\"",
     "python_version == \"3.10\" and sys_platform == \"linux\" and platform_machine == \"aarch64\" and os_name == \"posix\" and platform_python_implementation == \"CPython\" and python_full_version < \"3.10.2\"",
@@ -147,28 +152,28 @@ sha256 = "4b0ce306c966eb73bc3a7b6abad017c556dadd92c44701562cd528ac7fde4d5b"
 
 [[packages]]
 name = "filelock"
-version = "4.0.12"
+version = "4.1.0"
 marker = "\"pre-commit\" in dependency_groups"
 requires-python = ">=3.10"
 index = "https://pypi.org/simple/"
 
 [packages.sdist]
-name = "filelock-4.0.12.tar.gz"
-upload-time = 2026-10-05 13:17:43.677018+00:00
-url = "https://files.pythonhosted.org/packages/53/e4/34efcb869715cf299e47d1ac7b2624d2bcb6f2d3dffc2f0abe8417f65ab2/filelock-4.0.12.tar.gz"
-size = 253880
+name = "filelock-4.1.0.tar.gz"
+upload-time = 2026-10-09 19:57:20.340403+00:00
+url = "https://files.pythonhosted.org/packages/4c/58/6fd434bec86eff7c38a3168454cb132b762b2bea9b3ac094101a2f7bc32a/filelock-4.1.0.tar.gz"
+size = 561277
 
 [packages.sdist.hashes]
-sha256 = "cf42711a7ac791818b299fab0332a088c65aeeefa36290de98db92c434303b0c"
+sha256 = "ad7f724afef953e731b1cc39bcd3a09166d72ed7fcdf29e6e88b1c3235c6715d"
 
 [[packages.wheels]]
-name = "filelock-4.0.12-py3-none-any.whl"
-upload-time = 2026-10-05 13:17:42.361676+00:00
-url = "https://files.pythonhosted.org/packages/da/a1/b047e1c486a2c66283633b7dbb73872ca16ca1ce6a426f70d4d037fc8e1c/filelock-4.0.12-py3-none-any.whl"
-size = 111732
+name = "filelock-4.1.0-py3-none-any.whl"
+upload-time = 2026-10-09 19:57:18.716241+00:00
+url = "https://files.pythonhosted.org/packages/ee/86/032133892a5de43b5a98200b01aadcad68cc255e274a762f08b8a76d2912/filelock-4.1.0-py3-none-any.whl"
+size = 133003
 
 [packages.wheels.hashes]
-sha256 = "5f17ee83ecee8a6f3e389c75822fb70a1c2f0506b99438a6dffa1d56793588c8"
+sha256 = "2ce9818e3e2d8f284c1a964414447ef148d42a5fd5e2a477a7118e574b293ec1"
 
 [[packages]]
 name = "identify"
@@ -225,27 +230,27 @@ sha256 = "bba5600596a7e21f3eef53281cf28d6a5195634d2f2b78ff9501a3272c6eaab0"
 
 [[packages]]
 name = "installer"
-version = "1.0.1"
+version = "1.1.0"
 requires-python = ">=3.10"
 index = "https://pypi.org/simple/"
 
 [packages.sdist]
-name = "installer-1.0.1.tar.gz"
-upload-time = 2026-05-11 18:13:28.158660+00:00
-url = "https://files.pythonhosted.org/packages/06/fe/b9f481cf0cc867958a21338baa900357b7b7d86cac9b025948049d77923c/installer-1.0.1.tar.gz"
-size = 481132
+name = "installer-1.1.0.tar.gz"
+upload-time = 2026-10-12 19:35:52.851170+00:00
+url = "https://files.pythonhosted.org/packages/56/d3/2fab33d15004d41ae8e7b5d3e310510f7f34a7e1dd032a3e60d8b38d8fba/installer-1.1.0.tar.gz"
+size = 481257
 
 [packages.sdist.hashes]
-sha256 = "052c7fc3721d54c696e2dea019be67539d7b144e924f559f54beb3121831c364"
+sha256 = "5adc0c01ce62d809989e246987cd68944fe5df8af562d0358f65b2ab15cb5de7"
 
 [[packages.wheels]]
-name = "installer-1.0.1-py3-none-any.whl"
-upload-time = 2026-05-11 18:13:26.252723+00:00
-url = "https://files.pythonhosted.org/packages/26/48/bedf3ba4163e7db392c9d4cbdfc8217423196c8fccbe5a404a0f094fde63/installer-1.0.1-py3-none-any.whl"
-size = 464455
+name = "installer-1.1.0-py3-none-any.whl"
+upload-time = 2026-10-12 19:35:51.096942+00:00
+url = "https://files.pythonhosted.org/packages/d7/7a/63547a792a12148882205d79e07644091d5b7690f40c2bb9d41452a8bdc2/installer-1.1.0-py3-none-any.whl"
+size = 464466
 
 [packages.wheels.hashes]
-sha256 = "011d045df8b954ced7dde3a7e42ae4418da40ecda7990f2d11d5ed7c146fd98b"
+sha256 = "f55f5728ff61d3dd54dbc5a397cf3f7307cb64b180c20b72afbebf01c9e2c8a0"
 
 [[packages]]
 name = "nodeenv"
@@ -379,31 +384,31 @@ sha256 = "5fc53fdac9f7bd63fbcdc868fb5f90b4784d78a53a3d3388cd738b807441a20b"
 
 [[packages]]
 name = "python-discovery"
-version = "1.6.1"
+version = "1.6.2"
 marker = "\"pre-commit\" in dependency_groups"
-requires-python = ">=3.8"
+requires-python = ">=3.9"
 dependencies = [
     { name = "filelock" },
 ]
 index = "https://pypi.org/simple/"
 
 [packages.sdist]
-name = "python_discovery-1.6.1.tar.gz"
-upload-time = 2026-09-18 01:31:53.971742+00:00
-url = "https://files.pythonhosted.org/packages/0c/57/250bd238b966cece44328235eb85290045d059265fdaf7527a3a958123db/python_discovery-1.6.1.tar.gz"
-size = 84338
+name = "python_discovery-1.6.2.tar.gz"
+upload-time = 2026-10-10 01:24:27.912841+00:00
+url = "https://files.pythonhosted.org/packages/b0/73/54993df8fc57e906dc9b7e01d1d9b0b2d3eb0ce3190639e33dccb12853f7/python_discovery-1.6.2.tar.gz"
+size = 86921
 
 [packages.sdist.hashes]
-sha256 = "cf87d3627dfb4412437fdd5b13eae402607722998d21567993aedbc59b23c15e"
+sha256 = "cd1738ca1d37c86ef9d0b654dd46fcee1e41c97c6add12575e8501ced39afdb4"
 
 [[packages.wheels]]
-name = "python_discovery-1.6.1-py3-none-any.whl"
-upload-time = 2026-09-18 01:31:52.448202+00:00
-url = "https://files.pythonhosted.org/packages/16/7d/e9ffbadfbf89c93848412d04594135c4ae8c1d37d9e053b9c3ed718fabc4/python_discovery-1.6.1-py3-none-any.whl"
-size = 38664
+name = "python_discovery-1.6.2-py3-none-any.whl"
+upload-time = 2026-10-10 01:24:26.721179+00:00
+url = "https://files.pythonhosted.org/packages/61/3b/50ed32583bfffa737df67d33b9c15d7b25df232c55ab606d059f610ef6ca/python_discovery-1.6.2-py3-none-any.whl"
+size = 38912
 
 [packages.wheels.hashes]
-sha256 = "d43fcdef879fe795352bd13ccf8d185ba5a9f86f36cfcd00529f596e737442b3"
+sha256 = "f0c697f95a3aaec4174a6e5e58f5885e25768684bafc76f1afde384709ebdcf2"
 
 [[packages]]
 name = "pyyaml"
@@ -842,6 +847,51 @@ size = 114621
 sha256 = "f4b653094e18f9031102d3a1da5c729c8f222d85225b18037dac621695e46e1a"
 
 [[packages.wheels]]
+name = "tomli-2.5.0-cp315-cp315-macosx_10_15_x86_64.whl"
+upload-time = 2026-10-07 12:23:13.941700+00:00
+url = "https://files.pythonhosted.org/packages/66/98/316fdc00f8c0939e6fe50461dd343c162d3ad51d1286eb25b7db54361d50/tomli-2.5.0-cp315-cp315-macosx_10_15_x86_64.whl"
+size = 162775
+
+[packages.wheels.hashes]
+sha256 = "a525685c2f97da40762b8695eb7aa0af4c8344ca1905c73e4e29cb04d34607dc"
+
+[[packages.wheels]]
+name = "tomli-2.5.0-cp315-cp315-macosx_11_0_arm64.whl"
+upload-time = 2026-10-07 12:23:15.215497+00:00
+url = "https://files.pythonhosted.org/packages/c5/22/7b10fa5bb01c9539f53f69b619361b19350acc73657772ea7ac70ba309a8/tomli-2.5.0-cp315-cp315-macosx_11_0_arm64.whl"
+size = 161406
+
+[packages.wheels.hashes]
+sha256 = "9dbb18c1cfb2f6517942fc9314437f66aa06d94436ffb1f06102ef3572f35276"
+
+[[packages.wheels]]
+name = "tomli-2.5.0-cp315-cp315-manylinux2014_aarch64.manylinux_2_17_aarch64.manylinux_2_28_aarch64.whl"
+upload-time = 2026-10-07 12:23:16.471112+00:00
+url = "https://files.pythonhosted.org/packages/9c/e7/1a069d86dfd20f1f84f71c63faed9f83c1d890bc06c27d82dc7d888fb573/tomli-2.5.0-cp315-cp315-manylinux2014_aarch64.manylinux_2_17_aarch64.manylinux_2_28_aarch64.whl"
+size = 273855
+
+[packages.wheels.hashes]
+sha256 = "752e8b1aa6a4367ef8bf6a1a1e005540f7ed055ba36d7193796812ca5404eb52"
+
+[[packages.wheels]]
+name = "tomli-2.5.0-cp315-cp315-manylinux2014_x86_64.manylinux_2_17_x86_64.manylinux_2_28_x86_64.whl"
+upload-time = 2026-10-07 12:23:18.166140+00:00
+url = "https://files.pythonhosted.org/packages/ae/83/d1ef43d1687d092ab9c235455c76e6e709483b346b056f086095c7c263a5/tomli-2.5.0-cp315-cp315-manylinux2014_x86_64.manylinux_2_17_x86_64.manylinux_2_28_x86_64.whl"
+size = 284910
+
+[packages.wheels.hashes]
+sha256 = "c47300f9bf791808f77d82747691c4bb09cb14bdf3060cca99b42cdc4361d5a7"
+
+[[packages.wheels]]
+name = "tomli-2.5.0-cp315-cp315-win_amd64.whl"
+upload-time = 2026-10-07 12:23:23.098344+00:00
+url = "https://files.pythonhosted.org/packages/4c/bd/31a3790c11d6ea95fcf5e6022ac0f8d0543c9b61120b730fc481bd43d3b4/tomli-2.5.0-cp315-cp315-win_amd64.whl"
+size = 114589
+
+[packages.wheels.hashes]
+sha256 = "d747252933c8a65ef6bd8da0fbb7ce28a90eb6119d8cd00772cd528aa07b68d5"
+
+[[packages.wheels]]
 name = "tomli-2.5.0-py3-none-any.whl"
 upload-time = 2026-10-07 12:23:36.875825+00:00
 url = "https://files.pythonhosted.org/packages/60/3f/3e3f8fd0919249b0200c80fbc4f9a1e70be19f9883da71dfb7f8b9ab8aca/tomli-2.5.0-py3-none-any.whl"
@@ -876,27 +926,27 @@ sha256 = "188306098d013b691fcadc011abd66727d3c414c571bb01b1a174ba8c983cf90"
 
 [[packages]]
 name = "truststore"
-version = "0.10.4"
+version = "0.10.5"
 requires-python = ">=3.10"
 index = "https://pypi.org/simple/"
 
 [packages.sdist]
-name = "truststore-0.10.4.tar.gz"
-upload-time = 2025-08-12 18:49:02.730234+00:00
-url = "https://files.pythonhosted.org/packages/53/a3/1585216310e344e8102c22482f6060c7a6ea0322b63e026372e6dcefcfd6/truststore-0.10.4.tar.gz"
-size = 26169
+name = "truststore-0.10.5.tar.gz"
+upload-time = 2026-10-12 22:27:31.808128+00:00
+url = "https://files.pythonhosted.org/packages/ee/9f/c5201d42a484c061e528825fc8e2d565f5abd50a4ced6fb7d29c4ec99b2b/truststore-0.10.5.tar.gz"
+size = 28091
 
 [packages.sdist.hashes]
-sha256 = "9d91bd436463ad5e4ee4aba766628dd6cd7010cf3e2461756b3303710eebc301"
+sha256 = "30d36967ccaded5cbb38d602c433f53600036c79d502f4533a49b60a03bbefcd"
 
 [[packages.wheels]]
-name = "truststore-0.10.4-py3-none-any.whl"
-upload-time = 2025-08-12 18:49:01.460601+00:00
-url = "https://files.pythonhosted.org/packages/19/97/56608b2249fe206a67cd573bc93cd9896e1efb9e98bce9c163bcdc704b88/truststore-0.10.4-py3-none-any.whl"
-size = 18660
+name = "truststore-0.10.5-py3-none-any.whl"
+upload-time = 2026-10-12 22:27:30.377491+00:00
+url = "https://files.pythonhosted.org/packages/51/e9/3a7820be2bb0fe53b6bc9c3be26d3d1158004e4c3ab953aa6840b955b1e9/truststore-0.10.5-py3-none-any.whl"
+size = 19017
 
 [packages.wheels.hashes]
-sha256 = "adaeaecf1cbb5f4de3b1959b42d41f6fab57b2b1666adb59e89cb0b53361d981"
+sha256 = "9aaaedaefaf06d8b206278cf8b5012bc897f485a874503501e12d776df78951c"
 
 [[packages]]
 name = "typing-extensions"
@@ -948,7 +998,7 @@ sha256 = "0cf3cae568d36aa9576b28dfb35f11328f1cb974ca7647d9475ebb86c75ac6e3"
 
 [[packages]]
 name = "virtualenv"
-version = "21.14.6"
+version = "21.14.7"
 marker = "\"pre-commit\" in dependency_groups"
 requires-python = ">=3.9"
 dependencies = [
@@ -962,22 +1012,22 @@ dependencies = [
 index = "https://pypi.org/simple/"
 
 [packages.sdist]
-name = "virtualenv-21.14.6.tar.gz"
-upload-time = 2026-10-08 14:49:57.376574+00:00
-url = "https://files.pythonhosted.org/packages/92/f3/589727d02bc832750cfa00ced4315d127535a22a6d7cfcb369b2fe219a2e/virtualenv-21.14.6.tar.gz"
-size = 5467961
+name = "virtualenv-21.14.7.tar.gz"
+upload-time = 2026-10-12 01:27:31.842376+00:00
+url = "https://files.pythonhosted.org/packages/dc/3f/935cf1757643381fb7f7cc98197b4bc119223d9c2cf37dc3b03ad2a4455f/virtualenv-21.14.7.tar.gz"
+size = 5471741
 
 [packages.sdist.hashes]
-sha256 = "c6b74616e64bffa9532cfa9dfd54ffbab0dc9b999df2bb8ec0d75e559b983661"
+sha256 = "5f427d56f39eb7e7447d641dd4b7ab1e9c92793f498f35f26da2e4972c5546ae"
 
 [[packages.wheels]]
-name = "virtualenv-21.14.6-py3-none-any.whl"
-upload-time = 2026-10-08 14:49:54.988049+00:00
-url = "https://files.pythonhosted.org/packages/c9/1f/e5182163bcee149dda4eec823d88b0f51f2c0c531b12da896f666f0b80c1/virtualenv-21.14.6-py3-none-any.whl"
-size = 5487469
+name = "virtualenv-21.14.7-py3-none-any.whl"
+upload-time = 2026-10-12 01:27:29.370747+00:00
+url = "https://files.pythonhosted.org/packages/52/5b/799c3e5b8e04d5fa1c9b61a4c1f5079603e747205c7311b92abd30283df5/virtualenv-21.14.7-py3-none-any.whl"
+size = 5487587
 
 [packages.wheels.hashes]
-sha256 = "eb1a20c5878569b69667f6a1af03458a8512b3afa7be771a2dafe92fdca05bb9"
+sha256 = "3769219a308c5d2f093e7729621ad12a6346b5767a7ec4338414e2a0fb0c526b"
 
 [[packages]]
 name = "zipp"
@@ -1005,8 +1055,8 @@ size = 10582
 sha256 = "8979f52d874162f485ff2981e3891f3a3317b7a3dd43ff1e1775b9304f307a9c"
 
 [tool.nab]
-nab-version = "0.0.19.dev0"
-created-at = 2026-10-08 21:07:17.174478+00:00
+nab-version = "0.0.22.dev0"
+created-at = 2026-10-15 15:21:11.541423+00:00
 command-line = [
     "nab",
     "lock",
@@ -1023,7 +1073,7 @@ command-line = [
 ]
 input-path = "pyproject.toml"
 mode = "universal"
-python-specifier = ">=3.10,<3.15"
+python-specifier = ">=3.10,<3.16"
 platforms = [
     "linux_x86_64",
     "linux_aarch64",
