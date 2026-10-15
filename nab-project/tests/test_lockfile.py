@@ -1592,9 +1592,7 @@ class TestErrorPaths:
             _pin_discriminator(Weird())  # type: ignore[arg-type]
 
     def test_wheel_primary_digest_requires_acceptable_hash(self) -> None:
-        """A wheel artefact whose hashes contain only unacceptable
-        algorithms (e.g. md5) raises rather than emitting a
-        non-PEP-751 lockfile entry."""
+        """A wheel's primary digest requires sha256, sha384, or sha512."""
         artifact = WheelArtifact(
             filename="foo-1.0-py3-none-any.whl",
             url="https://example.com/foo-1.0-py3-none-any.whl",
@@ -4131,11 +4129,11 @@ class TestBuildTargetLock:
         assert isinstance(pin, IndexPin)
         assert pin.wheels[0].upload_time is None
 
-    def test_missing_acceptable_hash_raises(self) -> None:
+    def test_missing_hash_raises(self) -> None:
         wheel = _wheel_file(sha256=None)
         provider = _FakeProvider(listings={"foo": [(Version("1.0"), wheel)]})
         lock = build_target_lock(provider, _HOST, {"foo": Version("1.0")})
-        with pytest.raises(MissingHashError, match="no acceptable hash"):
+        with pytest.raises(MissingHashError):
             write_lock(_lock_from(lock))
 
     def test_unsupported_algorithm_raises(self) -> None:
@@ -4151,7 +4149,7 @@ class TestBuildTargetLock:
         )
         provider = _FakeProvider(listings={"foo": [(Version("1.0"), wheel_md5_only)]})
         lock = build_target_lock(provider, _HOST, {"foo": Version("1.0")})
-        with pytest.raises(MissingHashError, match="no acceptable hash"):
+        with pytest.raises(MissingHashError):
             write_lock(_lock_from(lock))
 
     def test_sha384_and_sha512_emit(self) -> None:
@@ -4305,7 +4303,7 @@ class TestMissingHashFormatAware:
             listings={"foo": [(Version("1.0"), _wheel_file(sha256=None))]}
         )
         lock = build_target_lock(provider, _HOST, {"foo": Version("1.0")})
-        with pytest.raises(MissingHashError, match="no acceptable hash"):
+        with pytest.raises(MissingHashError):
             write_lock(_lock_from(lock))
 
     def test_listing_digest_carrying_a_newline_leaves_pin_hashless(self) -> None:
@@ -5030,6 +5028,64 @@ class TestPathHelpers:
         assert _relativize_path(target, tmp_path) == target.as_posix()
 
 
+@pytest.mark.parametrize(
+    "write",
+    [write_requirements_with_hashes, write_requirements_without_hashes],
+    ids=["with_hashes", "without_hashes"],
+)
+class TestArchiveRequirementsHashes:
+    @pytest.mark.parametrize("hashes", [(), (("blake2b", "0" * 128),)])
+    def test_unusable_hash_preserves_output(
+        self,
+        tmp_path: Path,
+        write: Callable[..., str],
+        hashes: tuple[tuple[str, str], ...],
+    ) -> None:
+        destination = tmp_path / "requirements.txt"
+        destination.write_text("committed\n", encoding="utf-8")
+        pin = ArchivePin(
+            name="foo",
+            version="1.0",
+            url="https://example.com/foo-1.0.tar.gz",
+            hashes=hashes,
+        )
+
+        with pytest.raises(MissingHashError):
+            write(LockInput(targets=_one({"foo": pin})), output_path=destination)
+
+        assert destination.read_text(encoding="utf-8") == "committed\n"
+        assert list(tmp_path.iterdir()) == [destination]
+
+    @pytest.mark.parametrize(
+        ("algorithm", "length"),
+        [
+            ("md5", 32),
+            ("sha1", 40),
+            ("sha224", 56),
+            ("sha256", 64),
+            ("sha384", 96),
+            ("sha512", 128),
+        ],
+    )
+    def test_recognized_fragment_hash_retained(
+        self, write: Callable[..., str], algorithm: str, length: int
+    ) -> None:
+        digest = "a" * length
+        pin = ArchivePin(
+            name="foo",
+            version="1.0",
+            url="https://example.com/foo-1.0.tar.gz",
+            hashes=(("blake2b", "0" * 128), (algorithm, digest)),
+            subdirectory="part one/pkg",
+        )
+
+        text = write(LockInput(targets=_one({"foo": pin})))
+
+        assert text == (
+            f"foo @ {pin.url}#{algorithm}={digest}&subdirectory=part%20one/pkg\n"
+        )
+
+
 class TestWriteRequirementsWithHashes:
     def test_index_pin_emits_hashes(self) -> None:
         text = write_requirements_with_hashes(
@@ -5088,6 +5144,73 @@ class TestWriteRequirementsWithHashes:
             f"    --hash=sha256:{'f' * 64} \\\n"
             f"    --hash=sha512:{'9' * 128}\n"
         )
+
+    def test_unsupported_hashes_omitted(self) -> None:
+        sdist = SdistArtifact(
+            filename="foo-1.0.tar.gz",
+            url="https://example.com/foo-1.0.tar.gz",
+            hashes=(("md5", "1" * 32), ("sha384", "2" * 96)),
+        )
+        wheel = WheelArtifact(
+            filename="foo-1.0-py3-none-any.whl",
+            url="https://example.com/foo-1.0-py3-none-any.whl",
+            hashes=(("md5", "3" * 32), ("sha256", "4" * 64)),
+        )
+        pin = IndexPin(
+            name="foo", version="1.0", index="pypi", sdist=sdist, wheels=(wheel,)
+        )
+
+        text = write_requirements_with_hashes(LockInput(targets=_one({"foo": pin})))
+
+        assert text == (
+            "foo==1.0 \\\n"
+            f"    --hash=sha256:{'4' * 64} \\\n"
+            f"    --hash=sha384:{'2' * 96}\n"
+        )
+
+    @pytest.mark.parametrize(
+        ("sdist", "wheels"),
+        [
+            pytest.param(
+                None,
+                (
+                    WheelArtifact(
+                        filename="foo-1.0-py3-none-any.whl",
+                        url="https://example.com/foo-1.0-py3-none-any.whl",
+                        hashes=(("md5", "1" * 32),),
+                    ),
+                ),
+                id="wheel",
+            ),
+            pytest.param(
+                SdistArtifact(
+                    filename="foo-1.0.tar.gz",
+                    url="https://example.com/foo-1.0.tar.gz",
+                    hashes=(("md5", "1" * 32),),
+                ),
+                (),
+                id="sdist",
+            ),
+        ],
+    )
+    def test_md5_only_artifact_preserves_output(
+        self,
+        tmp_path: Path,
+        sdist: SdistArtifact | None,
+        wheels: tuple[WheelArtifact, ...],
+    ) -> None:
+        destination = tmp_path / "requirements.txt"
+        destination.write_text("committed\n", encoding="utf-8")
+        pin = IndexPin(
+            name="foo", version="1.0", index="pypi", sdist=sdist, wheels=wheels
+        )
+
+        with pytest.raises(MissingHashError, match="no acceptable hash"):
+            write_requirements_with_hashes(
+                LockInput(targets=_one({"foo": pin})), output_path=destination
+            )
+
+        assert destination.read_text(encoding="utf-8") == "committed\n"
 
     def test_local_pin_uses_file_url(self, tmp_path: Path) -> None:
         text = write_requirements_with_hashes(

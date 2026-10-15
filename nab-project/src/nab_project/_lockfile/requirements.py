@@ -15,7 +15,7 @@ from urllib.parse import quote
 
 from nab_index.atomic import atomic_write_text
 
-from .builder import require_artifact_hashes, validate_artifact_hashes
+from .builder import MissingHashError, validate_artifact_hashes
 
 if TYPE_CHECKING:
     import os
@@ -29,22 +29,27 @@ __all__ = [
     "write_requirements_without_hashes",
 ]
 
+# Pip recognizes more algorithms in URL fragments than in --hash options.
+_PIP_FRAGMENT_HASH_ALGORITHMS = ("sha256", "sha384", "sha512", "sha224", "sha1", "md5")
+
 
 def write_requirements_with_hashes(
     lock_input: LockInput, *, output_path: str | os.PathLike[str] | None = None
 ) -> str:
     """Render ``lock_input`` as a pip-compatible requirements.txt.
 
-    An index pin is ``name==version`` followed by one ``--hash=<algo>:<digest>``
-    per recorded digest, in the format pip's hash-checking mode accepts.  The
-    hash lines are sorted, so the output does not depend on artefact order.
-    Local and VCS pins are emitted as ``name @ <url>`` lines without hashes
-    (pip does not hash-check those forms); an editable local pin renders as
-    ``-e <url>`` and a ``subdirectory`` as a ``#subdirectory=`` fragment.  An
-    archive pin is a third form, ``name @ <url>#sha256=...``, carrying its hash
-    in the fragment. Returns the text and atomically writes ``output_path`` if set.
+    Index pins use ``name==version`` with sorted ``--hash=<algo>:<digest>`` lines.
+    These options accept only recorded sha256, sha384, and sha512 digests.
+    An index artefact without one raises :class:`MissingHashError`.
+
+    Local and VCS pins use ``name @ <url>``; editable local pins use ``-e <url>``.
+    Local subdirectories use a ``#subdirectory=`` fragment.
+    Archive URL fragments carry pip-recognized hashes and optional subdirectories.
+    An archive without a pip-recognized hash raises :class:`MissingHashError`.
+
+    Return the text and atomically write it when ``output_path`` is provided.
     """
-    require_artifact_hashes(lock_input)
+    _require_pip_hashes(lock_input)
     return _render_requirements(lock_input, with_hashes=True, output_path=output_path)
 
 
@@ -59,6 +64,34 @@ def write_requirements_without_hashes(
     provided, atomically writes it.
     """
     return _render_requirements(lock_input, with_hashes=False, output_path=output_path)
+
+
+def _pip_hashes(
+    hashes: tuple[tuple[str, str], ...],
+) -> tuple[tuple[str, str], ...]:
+    """Return hashes accepted by pip's hash-checking mode."""
+    from ..lockfile import ACCEPTED_HASH_ALGORITHMS
+
+    return tuple(pair for pair in hashes if pair[0] in ACCEPTED_HASH_ALGORITHMS)
+
+
+def _require_pip_hashes(lock_input: LockInput) -> None:
+    """Reject index artefacts without a pip-compatible hash."""
+    from ..lockfile import ACCEPTED_HASH_ALGORITHMS, IndexPin
+
+    for lock in lock_input.targets.values():
+        for pin in lock.pins.values():
+            if not isinstance(pin, IndexPin):
+                continue
+            artefacts = (*pin.wheels, *((pin.sdist,) if pin.sdist is not None else ()))
+            for artefact in artefacts:
+                if not _pip_hashes(artefact.hashes):
+                    msg = (
+                        f"{pin.name}: artefact {artefact.filename!r} has no "
+                        f"acceptable hash (need one of "
+                        f"{list(ACCEPTED_HASH_ALGORITHMS)!r})"
+                    )
+                    raise MissingHashError(msg)
 
 
 def _render_requirements(
@@ -119,8 +152,13 @@ def _render_pins(pins: Mapping[str, PinShape], *, with_hashes: bool) -> list[str
             lines.append(f"{pin.name} @ {pin.repo_url}")
         elif isinstance(pin, ArchivePin):
             validate_artifact_hashes(pin.name, pin.hashes)
-            # Archive hashes stay in the URL in both output formats.
-            fragment = "&".join(f"{algo}={digest}" for algo, digest in pin.hashes)
+            hashes = tuple(
+                pair for pair in pin.hashes if pair[0] in _PIP_FRAGMENT_HASH_ALGORITHMS
+            )
+            if not hashes:
+                msg = f"{pin.name}: archive has no pip-recognized hash"
+                raise MissingHashError(msg)
+            fragment = "&".join(f"{algo}={digest}" for algo, digest in hashes)
             if pin.subdirectory is not None:
                 fragment += f"&subdirectory={quote(pin.subdirectory, safe='/')}"
             lines.append(f"{pin.name} @ {pin.url}#{fragment}")
@@ -137,10 +175,10 @@ def _render_index_pin(pin: IndexPin, *, with_hashes: bool = True) -> list[str]:
     digests: list[tuple[str, str]] = []
     if pin.sdist is not None:
         validate_artifact_hashes(pin.sdist.filename, pin.sdist.hashes)
-        digests.extend(pin.sdist.hashes)
+        digests.extend(_pip_hashes(pin.sdist.hashes))
     for wheel in pin.wheels:
         validate_artifact_hashes(wheel.filename, wheel.hashes)
-        digests.extend(wheel.hashes)
+        digests.extend(_pip_hashes(wheel.hashes))
     if not digests:
         return [f"{pin.name}=={pin.version}"]
     parts = [f"{pin.name}=={pin.version}"]
