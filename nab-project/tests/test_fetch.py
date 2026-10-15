@@ -1025,13 +1025,11 @@ class TestFetchCoordinator:
         assert not older_prefetched
 
     @respx.mock
-    def test_fetch_error_logged_not_raised(self) -> None:
+    def test_fetch_error_logged_not_raised(self, no_retries: None) -> None:
         respx.get("https://pypi.org/simple/bad/").mock(return_value=httpx.Response(500))
         with _coord() as coord:
             event = coord.request_listing("bad")
-            # The event won't be set because the fetch failed,
-            # but the coordinator shouldn't crash
-            event.wait(timeout=2)
+            assert event.wait(timeout=2)
             assert not coord._crashed
 
     @pytest.mark.parametrize(
@@ -1064,6 +1062,7 @@ class TestFetchCoordinator:
         kind: str,
         request_fetch: Callable[[FetchCoordinator], threading.Event],
         caplog: pytest.LogCaptureFixture,
+        no_retries: None,
     ) -> None:
         """A failed fetch warns with its cause, and no traceback."""
         respx.get(url__regex=r".*").mock(return_value=httpx.Response(500))
@@ -1072,7 +1071,7 @@ class TestFetchCoordinator:
             caplog.at_level(logging.DEBUG, logger="nab_project.fetch"),
             _coord() as coord,
         ):
-            request_fetch(coord).wait(timeout=5)
+            assert request_fetch(coord).wait(timeout=5)
 
         failures = [
             r
@@ -1086,14 +1085,16 @@ class TestFetchCoordinator:
         assert "500" in failures[0].getMessage()
 
     @respx.mock
-    def test_listing_transport_error_not_masked_as_empty(self) -> None:
+    def test_listing_transport_error_not_masked_as_empty(
+        self, no_retries: None
+    ) -> None:
         """A 5xx on a listing fetch stores an error, not an empty listing.
         A genuine 404 (no candidates) is distinct and handled inside get_files.
         """
         respx.get("https://pypi.org/simple/bad/").mock(return_value=httpx.Response(500))
         with _coord() as coord:
             event = coord.request_listing("bad")
-            event.wait(timeout=5)
+            assert event.wait(timeout=5)
             assert not coord._crashed
             assert coord.index.get_listing("bad") is None
             assert coord.index.get_listing_error("bad") is not None
