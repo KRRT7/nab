@@ -148,10 +148,15 @@ def _local_sha256(path: Path) -> str:
     return digest.hexdigest()
 
 
-def _find_local(dist_dir: Path, filename: str) -> Path | None:
-    """Return the built copy of a file under ``dist_dir``, if present."""
-    matches = sorted(dist_dir.rglob(filename))
-    return matches[0] if matches else None
+def _find_local(dist_dir: Path, filename: str) -> Path:
+    """Require one local artifact when comparing built and published files."""
+    matches = sorted(path for path in dist_dir.rglob(filename) if path.is_file())
+    if len(matches) != 1:
+        msg = (
+            f"expected exactly one local artifact for {filename}, found {len(matches)}"
+        )
+        raise VerificationError(msg)
+    return matches[0]
 
 
 def _check_once(
@@ -162,12 +167,10 @@ def _check_once(
     dist_dir: Path | None,
 ) -> str:
     """Run one attempt of every check for a file and return a status detail."""
+    local = _find_local(dist_dir, filename) if dist_dir is not None else None
     _verify_attestation(filename, repository)
-    if dist_dir is None:
-        return "attestation OK"
-    local = _find_local(dist_dir, filename)
     if local is None:
-        return "attestation OK; no local copy to compare"
+        return "attestation OK"
     published = _published_sha256(pypi_name, version, filename)
     built = _local_sha256(local)
     if built != published:
@@ -236,6 +239,12 @@ def verify_release(
     if deadline is None:
         deadline = time.monotonic() + RETRY_BUDGET_SECONDS
     files = expected_files(version)
+    if dist_dir is not None:
+        try:
+            for _, filename in files:
+                _find_local(dist_dir, filename)
+        except VerificationError as error:
+            raise SystemExit(str(error)) from error
     print(
         f"Verifying {len(files)} published files for nab {version} "
         f"against {repository}.",
