@@ -151,7 +151,7 @@ def _check_version(command: list[str], version: str) -> None:
     """Fail unless the command prints the built version and exits 0."""
     output = _capture([*command, "--version"])
     expected = f"nab {version}"
-    if expected not in output:
+    if output.strip() != expected:
         shown = " ".join(command)
         msg = f"`{shown} --version` reported {output.strip()!r}, expected {expected!r}"
         raise SystemExit(msg)
