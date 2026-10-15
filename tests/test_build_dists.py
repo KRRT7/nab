@@ -5,8 +5,10 @@ from __future__ import annotations
 import hashlib
 import importlib.util
 import io
+import json
 import sys
 import tarfile
+import urllib.error
 import zipfile
 from pathlib import Path
 from types import ModuleType
@@ -278,3 +280,148 @@ def test_size_summary_reports_numeric_rows_and_appends(
         ]
         assert numeric == expected
     assert summary.read_bytes().startswith(b"existing\n")
+
+
+def _json_response(entries: list[tuple[str, str | None]]) -> io.BytesIO:
+    """Return a real response stream with PyPI's file-digest shape."""
+    return io.BytesIO(
+        json.dumps(
+            {
+                "urls": [
+                    {"filename": filename, "digests": {"sha256": digest}}
+                    for filename, digest in entries
+                ]
+            }
+        ).encode()
+    )
+
+
+def test_release_reuses_package_json_but_not_across_runs(
+    tmp_path: Path, published: ModuleType, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    files = published.expected_files("0.0.3")
+    digest = hashlib.sha256(b"built").hexdigest()
+    for _, filename in files:
+        (tmp_path / filename).write_bytes(b"built")
+    requests: list[str] = []
+    attestations: list[str] = []
+
+    def urlopen(url: str, *, timeout: int) -> io.BytesIO:
+        requests.append(url)
+        name = url.split("/")[-3]
+        return _json_response(
+            [(filename, digest) for package, filename in files if package == name]
+        )
+
+    monkeypatch.setattr(published.urllib.request, "urlopen", urlopen)
+    monkeypatch.setattr(
+        published,
+        "_verify_attestation",
+        lambda filename, repository: attestations.append(filename),
+    )
+    published.verify_release("0.0.3", tmp_path)
+    assert len(requests) == len(build_dists.PACKAGES)
+    assert attestations == [filename for _, filename in files]
+
+    published.verify_release("0.0.3", tmp_path)
+    assert len(requests) == 2 * len(build_dists.PACKAGES)
+    assert len(attestations) == 2 * len(files)
+
+
+def test_missing_file_refreshes_json_on_every_retry(
+    tmp_path: Path, published: ModuleType, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    sdist, wheel = "nab-0.0.3.tar.gz", "nab-0.0.3-py3-none-any.whl"
+    digest = hashlib.sha256(b"built").hexdigest()
+    (tmp_path / wheel).write_bytes(b"built")
+    snapshots = [
+        [(sdist, digest)],
+        [(sdist, digest)],
+        [(sdist, digest), (wheel, digest)],
+    ]
+    requests: list[str] = []
+    waits: list[float] = []
+
+    def urlopen(url: str, *, timeout: int) -> io.BytesIO:
+        requests.append(url)
+        return _json_response(snapshots[len(requests) - 1])
+
+    monkeypatch.setattr(published.urllib.request, "urlopen", urlopen)
+    monkeypatch.setattr(published, "_verify_attestation", lambda *args: None)
+    clock = iter([0.0, 20.0])
+    monkeypatch.setattr(published.time, "monotonic", lambda: next(clock))
+    monkeypatch.setattr(published.time, "sleep", waits.append)
+    cache = {}
+    assert published._published_sha256("nab", "0.0.3", sdist, cache) == digest
+    published._check_file(
+        "nab", "0.0.3", wheel, "repository", tmp_path, 20.0, digests=cache
+    )
+    assert len(requests) == 3
+    assert waits == [15.0]
+
+
+@pytest.mark.parametrize("failure", ["404", "network"])
+def test_transient_json_failures_are_not_cached(
+    published: ModuleType, monkeypatch: pytest.MonkeyPatch, failure: str
+) -> None:
+    calls = []
+
+    def urlopen(url: str, *, timeout: int) -> io.BytesIO:
+        calls.append(url)
+        if len(calls) == 1:
+            if failure == "404":
+                raise urllib.error.HTTPError(url, 404, "pending", None, None)
+            raise urllib.error.URLError("offline")
+        return _json_response([("file.whl", "digest")])
+
+    monkeypatch.setattr(published.urllib.request, "urlopen", urlopen)
+    cache = {}
+    with pytest.raises(published.NotYetAvailableError):
+        published._published_sha256("nab", "0.0.3", "file.whl", cache)
+    assert cache == {}
+    assert published._published_sha256("nab", "0.0.3", "file.whl", cache) == "digest"
+    assert len(calls) == 2
+
+
+@pytest.mark.parametrize("digest", [None, "wrong"])
+def test_invalid_published_digest_never_waits(
+    tmp_path: Path,
+    published: ModuleType,
+    monkeypatch: pytest.MonkeyPatch,
+    digest: str | None,
+) -> None:
+    filename = "nab-0.0.3.tar.gz"
+    (tmp_path / filename).write_bytes(b"built")
+    monkeypatch.setattr(
+        published.urllib.request,
+        "urlopen",
+        lambda *args, **kwargs: _json_response([(filename, digest)]),
+    )
+    monkeypatch.setattr(published, "_verify_attestation", lambda *args: None)
+    waits = []
+    monkeypatch.setattr(published.time, "sleep", waits.append)
+    with pytest.raises(published.VerificationError):
+        published._check_file(
+            "nab", "0.0.3", filename, "repository", tmp_path, float("inf"), digests={}
+        )
+    assert waits == []
+
+
+def test_pending_json_still_obeys_the_shared_deadline(
+    tmp_path: Path, published: ModuleType, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    filename = "nab-0.0.3.tar.gz"
+    (tmp_path / filename).write_bytes(b"built")
+    monkeypatch.setattr(
+        published.urllib.request, "urlopen", lambda *args, **kwargs: _json_response([])
+    )
+    monkeypatch.setattr(published, "_verify_attestation", lambda *args: None)
+    times = iter([0.0, 15.0, 20.0])
+    monkeypatch.setattr(published.time, "monotonic", lambda: next(times))
+    waits = []
+    monkeypatch.setattr(published.time, "sleep", waits.append)
+    with pytest.raises(published.VerificationError, match="retry budget"):
+        published._check_file(
+            "nab", "0.0.3", filename, "repository", tmp_path, 20.0, digests={}
+        )
+    assert waits == [15.0, 5.0]

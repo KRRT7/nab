@@ -50,6 +50,7 @@ PACKAGES = build_dists.PACKAGES
 # Total wall-clock a run spends waiting for CDN propagation, shared across every
 # file. A real failure never consumes it; it fails immediately.
 RETRY_BUDGET_SECONDS = 600.0
+DigestCache = dict[tuple[str, str], dict[str, str]]
 
 # Substrings pypi-attestations prints when a file or its provenance has not
 # propagated yet. These are the only attestation failures worth retrying.
@@ -90,14 +91,15 @@ def _retry_waits() -> Iterator[float]:
         wait = min(wait * 2.0, 60.0)
 
 
-def _published_sha256(pypi_name: str, version: str, filename: str) -> str:
-    """Return the sha256 PyPI records for a file, or signal it is not up yet."""
+def _published_files(pypi_name: str, version: str) -> dict[str, str]:
+    """Fetch one package's current file digests without retaining failures."""
     url = f"https://pypi.org/pypi/{pypi_name}/{version}/json"
     try:
         # Host and scheme are fixed above; the request only varies by name.
         with urllib.request.urlopen(url, timeout=30) as response:
             data = json.load(response)
     except urllib.error.HTTPError as error:
+        error.close()
         if error.code == _HTTP_NOT_FOUND:
             msg = f"{pypi_name} {version} is not on PyPI yet (HTTP 404)"
             raise NotYetAvailableError(msg) from error
@@ -106,13 +108,29 @@ def _published_sha256(pypi_name: str, version: str, filename: str) -> str:
     except urllib.error.URLError as error:
         msg = f"network error reaching {url}: {error.reason}"
         raise NotYetAvailableError(msg) from error
-    for entry in data.get("urls", []):
-        if entry.get("filename") == filename:
-            digest = entry.get("digests", {}).get("sha256")
-            if not digest:
-                msg = f"{filename}: PyPI lists no sha256 digest"
-                raise VerificationError(msg)
-            return digest
+    return {
+        entry["filename"]: entry.get("digests", {}).get("sha256", "")
+        for entry in data.get("urls", [])
+        if entry.get("filename")
+    }
+
+
+def _published_sha256(
+    pypi_name: str, version: str, filename: str, digests: DigestCache | None = None
+) -> str:
+    """Reuse listed files, refreshing a snapshot when the requested file is absent."""
+    cache = {} if digests is None else digests
+    key = (pypi_name, version)
+    files = cache.get(key, {})
+    if filename not in files:
+        files = _published_files(pypi_name, version)
+        cache[key] = files
+    if filename in files:
+        digest = files[filename]
+        if not digest:
+            msg = f"{filename}: PyPI lists no sha256 digest"
+            raise VerificationError(msg)
+        return digest
     msg = f"{filename} is not listed for {pypi_name} {version} yet"
     raise NotYetAvailableError(msg)
 
@@ -165,13 +183,15 @@ def _check_once(
     filename: str,
     repository: str,
     dist_dir: Path | None,
+    *,
+    digests: DigestCache | None = None,
 ) -> str:
     """Run one attempt of every check for a file and return a status detail."""
     local = _find_local(dist_dir, filename) if dist_dir is not None else None
     _verify_attestation(filename, repository)
     if local is None:
         return "attestation OK"
-    published = _published_sha256(pypi_name, version, filename)
+    published = _published_sha256(pypi_name, version, filename, digests)
     built = _local_sha256(local)
     if built != published:
         msg = (
@@ -189,6 +209,8 @@ def _check_file(
     repository: str,
     dist_dir: Path | None,
     deadline: float,
+    *,
+    digests: DigestCache | None = None,
 ) -> str:
     """Check a file, retrying not-yet-available results until the deadline."""
     waits = _retry_waits()
@@ -196,7 +218,9 @@ def _check_file(
     while True:
         attempt += 1
         try:
-            return _check_once(pypi_name, version, filename, repository, dist_dir)
+            return _check_once(
+                pypi_name, version, filename, repository, dist_dir, digests=digests
+            )
         except NotYetAvailableError as pending:
             remaining = deadline - time.monotonic()
             if remaining <= 0:
@@ -218,11 +242,19 @@ def _evaluate_file(
     repository: str,
     dist_dir: Path | None,
     deadline: float,
+    *,
+    digests: DigestCache | None = None,
 ) -> tuple[bool, str]:
     """Check one file and return ``(passed, detail-or-reason)``."""
     try:
         detail = _check_file(
-            pypi_name, version, filename, repository, dist_dir, deadline
+            pypi_name,
+            version,
+            filename,
+            repository,
+            dist_dir,
+            deadline,
+            digests=digests,
         )
     except VerificationError as error:
         return False, str(error)
@@ -257,9 +289,16 @@ def verify_release(
             flush=True,
         )
     failures: list[tuple[str, str]] = []
+    digests: DigestCache = {}
     for pypi_name, filename in files:
         passed, detail = _evaluate_file(
-            pypi_name, version, filename, repository, dist_dir, deadline
+            pypi_name,
+            version,
+            filename,
+            repository,
+            dist_dir,
+            deadline,
+            digests=digests,
         )
         if passed:
             print(f"  ok   {filename}: {detail}", flush=True)
