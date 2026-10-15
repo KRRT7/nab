@@ -62,6 +62,8 @@ from nab_index.urllib3_async_transport import (
 )
 from nab_project.fetch import FetchCoordinator
 
+_SERVER_POLL_INTERVAL = 0.01
+
 LISTING_JSON = {
     "meta": {"api-version": "1.0"},
     "name": "pkg",
@@ -133,7 +135,11 @@ def _stub_index(
     server.statuses = list(statuses)
     server.seen = []
     server.retry_after = retry_after
-    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread = threading.Thread(
+        target=server.serve_forever,
+        kwargs={"poll_interval": _SERVER_POLL_INTERVAL},
+        daemon=True,
+    )
     thread.start()
     try:
         yield server
@@ -175,7 +181,11 @@ def _gzip_stub_index(
     server.bodies = list(bodies)
     server.encoding = encoding
     server.seen = []
-    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread = threading.Thread(
+        target=server.serve_forever,
+        kwargs={"poll_interval": _SERVER_POLL_INTERVAL},
+        daemon=True,
+    )
     thread.start()
     try:
         yield server
@@ -219,7 +229,11 @@ def _artifact_stub_index(body: bytes) -> Iterator[_ArtifactStubIndex]:
     server = _ArtifactStubIndex(("127.0.0.1", 0), _ArtifactStubIndexHandler)
     server.body = body
     server.accept_encoding = []
-    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread = threading.Thread(
+        target=server.serve_forever,
+        kwargs={"poll_interval": _SERVER_POLL_INTERVAL},
+        daemon=True,
+    )
     thread.start()
     try:
         yield server
@@ -254,7 +268,11 @@ class _UserAgentStubIndexHandler(BaseHTTPRequestHandler):
 def _user_agent_stub_index() -> Iterator[_UserAgentStubIndex]:
     server = _UserAgentStubIndex(("127.0.0.1", 0), _UserAgentStubIndexHandler)
     server.user_agents = []
-    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread = threading.Thread(
+        target=server.serve_forever,
+        kwargs={"poll_interval": _SERVER_POLL_INTERVAL},
+        daemon=True,
+    )
     thread.start()
     try:
         yield server
@@ -306,7 +324,11 @@ class _EarlyHintsIndexHandler(BaseHTTPRequestHandler):
 def _early_hints_index(informational: list[int]) -> Iterator[_EarlyHintsIndex]:
     server = _EarlyHintsIndex(("127.0.0.1", 0), _EarlyHintsIndexHandler)
     server.informational = list(informational)
-    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread = threading.Thread(
+        target=server.serve_forever,
+        kwargs={"poll_interval": _SERVER_POLL_INTERVAL},
+        daemon=True,
+    )
     thread.start()
     try:
         yield server
@@ -367,7 +389,11 @@ def _moved_index(
     server.body = body
     server.seen = []
     server.transient = list(transient)
-    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread = threading.Thread(
+        target=server.serve_forever,
+        kwargs={"poll_interval": _SERVER_POLL_INTERVAL},
+        daemon=True,
+    )
     thread.start()
     try:
         yield server

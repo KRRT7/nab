@@ -11,6 +11,7 @@ import importlib.util
 import itertools
 import json
 import sys
+from collections import Counter
 from functools import reduce
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
@@ -746,6 +747,23 @@ def _row_env(row: str) -> dict[str, str]:
     return {k: v for k, v in witness.items() if isinstance(v, str)}
 
 
+@pytest.fixture
+def simplification_calls(monkeypatch: pytest.MonkeyPatch) -> Counter[str]:
+    """Count successful real simplifications made by finalization."""
+    calls: Counter[str] = Counter()
+    original = MarkerSet.simplify
+
+    def simplify(
+        source: MarkerSet, *, within: MarkerSet, store: DecisionStore | None = None
+    ) -> MarkerSet:
+        result = original(source, within=within, store=store)
+        calls["simplify"] += 1
+        return result
+
+    monkeypatch.setattr(MarkerSet, "simplify", simplify)
+    return calls
+
+
 class TestEightLockRegression:
     """The captured markers of the eight committed CI locks.
 
@@ -753,7 +771,9 @@ class TestEightLockRegression:
     emission checks still pass on the simplified output.
     """
 
-    def test_wide_locks_become_tractable_and_byte_exact(self) -> None:
+    def test_wide_locks_become_tractable_and_byte_exact(
+        self, simplification_calls: Counter[str]
+    ) -> None:
         raw_total = gold_total = count = 0
         for name, lock in _LOCK_MARKERS["locks"].items():
             if name == "docs":
@@ -761,8 +781,6 @@ class TestEightLockRegression:
             within = _fixture_universe(lock["environments"])
             for pkg in lock["packages"]:
                 raw = Marker(pkg["raw"])
-                simplified = MarkerSet.from_marker(str(raw)).simplify(within=within)
-                assert simplified is not None
                 finalized = _finalize_marker(raw, within, pkg["name"])
                 shown = str(finalized) if finalized is not None else ""
                 assert shown == pkg["golden"]
@@ -770,21 +788,23 @@ class TestEightLockRegression:
                 gold_total += len(pkg["golden"])
                 count += 1
         assert count == _WIDE_MARKER_COUNT
+        assert simplification_calls["simplify"] == count
         assert raw_total == _SUBSET_RAW_BYTES
         assert gold_total == _SUBSET_GOLD_BYTES
 
-    def test_docs_lock_stays_byte_identical(self) -> None:
+    def test_docs_lock_stays_byte_identical(
+        self, simplification_calls: Counter[str]
+    ) -> None:
         lock = _LOCK_MARKERS["locks"]["docs"]
         within = _fixture_universe(lock["environments"])
         count = 0
         for pkg in lock["packages"]:
             raw = Marker(pkg["raw"])
-            simplified = MarkerSet.from_marker(str(raw)).simplify(within=within)
-            assert simplified is not None
             finalized = _finalize_marker(raw, within, pkg["name"])
             assert str(finalized) == pkg["raw"] == pkg["golden"]
             count += 1
         assert count == _DOCS_MARKER_COUNT
+        assert simplification_calls["simplify"] == count
 
     def test_named_landmarks(self) -> None:
         golden = {
