@@ -41,27 +41,27 @@ sha256 = "ecd351a4be9d35a9eaaba244a7687143c9c7d4aea6ac964e7e7ddab20cbcf4e7"
 
 [[packages]]
 name = "installer"
-version = "1.0.1"
+version = "1.1.0"
 requires-python = ">=3.10"
 index = "https://pypi.org/simple/"
 
 [packages.sdist]
-name = "installer-1.0.1.tar.gz"
-upload-time = 2026-05-11 18:13:28.158660+00:00
-url = "https://files.pythonhosted.org/packages/06/fe/b9f481cf0cc867958a21338baa900357b7b7d86cac9b025948049d77923c/installer-1.0.1.tar.gz"
-size = 481132
+name = "installer-1.1.0.tar.gz"
+upload-time = 2026-10-12 19:35:52.851170+00:00
+url = "https://files.pythonhosted.org/packages/56/d3/2fab33d15004d41ae8e7b5d3e310510f7f34a7e1dd032a3e60d8b38d8fba/installer-1.1.0.tar.gz"
+size = 481257
 
 [packages.sdist.hashes]
-sha256 = "052c7fc3721d54c696e2dea019be67539d7b144e924f559f54beb3121831c364"
+sha256 = "5adc0c01ce62d809989e246987cd68944fe5df8af562d0358f65b2ab15cb5de7"
 
 [[packages.wheels]]
-name = "installer-1.0.1-py3-none-any.whl"
-upload-time = 2026-05-11 18:13:26.252723+00:00
-url = "https://files.pythonhosted.org/packages/26/48/bedf3ba4163e7db392c9d4cbdfc8217423196c8fccbe5a404a0f094fde63/installer-1.0.1-py3-none-any.whl"
-size = 464455
+name = "installer-1.1.0-py3-none-any.whl"
+upload-time = 2026-10-12 19:35:51.096942+00:00
+url = "https://files.pythonhosted.org/packages/d7/7a/63547a792a12148882205d79e07644091d5b7690f40c2bb9d41452a8bdc2/installer-1.1.0-py3-none-any.whl"
+size = 464466
 
 [packages.wheels.hashes]
-sha256 = "011d045df8b954ced7dde3a7e42ae4418da40ecda7990f2d11d5ed7c146fd98b"
+sha256 = "f55f5728ff61d3dd54dbc5a397cf3f7307cb64b180c20b72afbebf01c9e2c8a0"
 
 [[packages]]
 name = "markdown-it-py"
@@ -429,28 +429,28 @@ sha256 = "27592957fedf6e0b62f281e96effd28043345e0e66001f97683aa9a40c667c93"
 
 [[packages]]
 name = "ruff"
-version = "0.16.10"
+version = "0.17.1"
 marker = "\"lint\" in dependency_groups"
 requires-python = ">=3.7"
 index = "https://pypi.org/simple/"
 
 [packages.sdist]
-name = "ruff-0.16.10.tar.gz"
-upload-time = 2026-10-01 18:03:21.697537+00:00
-url = "https://files.pythonhosted.org/packages/c4/49/23802c45f093eb14bde54b141d2b2f058edfa63a06db7beed047308cc08f/ruff-0.16.10.tar.gz"
-size = 4958724
+name = "ruff-0.17.1.tar.gz"
+upload-time = 2026-10-15 15:23:18.640400+00:00
+url = "https://files.pythonhosted.org/packages/f9/e7/e6d5749983b020e6cb1055abec0a6f361a8e94f0184cdcf56d4760995f02/ruff-0.17.1.tar.gz"
+size = 5323349
 
 [packages.sdist.hashes]
-sha256 = "eff4728c4eaae93f0955cd264d24b2ab348e74bf59986ccf282ba6dc16b3b017"
+sha256 = "5bb796c5112e9fb9527f2ef2faa0a130d6312d19de92bcfaddd70dbb2d41020f"
 
 [[packages.wheels]]
-name = "ruff-0.16.10-py3-none-manylinux_2_17_x86_64.manylinux2014_x86_64.whl"
-upload-time = 2026-10-01 18:02:57.497797+00:00
-url = "https://files.pythonhosted.org/packages/e4/03/17234145f302a645a123e8c3bb2411ecf4669fbc350de3b0d803230a1729/ruff-0.16.10-py3-none-manylinux_2_17_x86_64.manylinux2014_x86_64.whl"
-size = 10387968
+name = "ruff-0.17.1-py3-none-manylinux_2_17_x86_64.manylinux2014_x86_64.whl"
+upload-time = 2026-10-15 15:22:54.401815+00:00
+url = "https://files.pythonhosted.org/packages/62/86/5566290219708ce2928f3a29c4f843a1185b341ec6111c4631a33c5ceced/ruff-0.17.1-py3-none-manylinux_2_17_x86_64.manylinux2014_x86_64.whl"
+size = 10350811
 
 [packages.wheels.hashes]
-sha256 = "f33f43a864a8483eebd160e713336c8bab02c934feaff0a33cf5ccb41546d09a"
+sha256 = "a6ef98e51de8ef38082f90653ceeb84944bd7673783eea13e1647c5b9b064189"
 
 [[packages]]
 name = "toml"
@@ -536,27 +536,27 @@ sha256 = "188306098d013b691fcadc011abd66727d3c414c571bb01b1a174ba8c983cf90"
 
 [[packages]]
 name = "truststore"
-version = "0.10.4"
+version = "0.10.5"
 requires-python = ">=3.10"
 index = "https://pypi.org/simple/"
 
 [packages.sdist]
-name = "truststore-0.10.4.tar.gz"
-upload-time = 2025-08-12 18:49:02.730234+00:00
-url = "https://files.pythonhosted.org/packages/53/a3/1585216310e344e8102c22482f6060c7a6ea0322b63e026372e6dcefcfd6/truststore-0.10.4.tar.gz"
-size = 26169
+name = "truststore-0.10.5.tar.gz"
+upload-time = 2026-10-12 22:27:31.808128+00:00
+url = "https://files.pythonhosted.org/packages/ee/9f/c5201d42a484c061e528825fc8e2d565f5abd50a4ced6fb7d29c4ec99b2b/truststore-0.10.5.tar.gz"
+size = 28091
 
 [packages.sdist.hashes]
-sha256 = "9d91bd436463ad5e4ee4aba766628dd6cd7010cf3e2461756b3303710eebc301"
+sha256 = "30d36967ccaded5cbb38d602c433f53600036c79d502f4533a49b60a03bbefcd"
 
 [[packages.wheels]]
-name = "truststore-0.10.4-py3-none-any.whl"
-upload-time = 2025-08-12 18:49:01.460601+00:00
-url = "https://files.pythonhosted.org/packages/19/97/56608b2249fe206a67cd573bc93cd9896e1efb9e98bce9c163bcdc704b88/truststore-0.10.4-py3-none-any.whl"
-size = 18660
+name = "truststore-0.10.5-py3-none-any.whl"
+upload-time = 2026-10-12 22:27:30.377491+00:00
+url = "https://files.pythonhosted.org/packages/51/e9/3a7820be2bb0fe53b6bc9c3be26d3d1158004e4c3ab953aa6840b955b1e9/truststore-0.10.5-py3-none-any.whl"
+size = 19017
 
 [packages.wheels.hashes]
-sha256 = "adaeaecf1cbb5f4de3b1959b42d41f6fab57b2b1666adb59e89cb0b53361d981"
+sha256 = "9aaaedaefaf06d8b206278cf8b5012bc897f485a874503501e12d776df78951c"
 
 [[packages]]
 name = "typing-extensions"
@@ -641,8 +641,8 @@ size = 301667
 sha256 = "89ca642c5bf0101157a09366be69fad0379db1f700ae39a920e103234573670e"
 
 [tool.nab]
-nab-version = "0.0.19.dev0"
-created-at = 2026-10-08 21:17:40.306439+00:00
+nab-version = "0.0.22.dev0"
+created-at = 2026-10-15 15:32:00.112319+00:00
 command-line = [
     "nab",
     "lock",
