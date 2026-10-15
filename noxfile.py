@@ -27,7 +27,6 @@ from nox.command import CommandFailed
 nox.options.default_venv_backend = "venv"
 
 TESTS_LOCK = ".github/requirements/pylock.tests.toml"
-TYPES_LOCK = ".github/requirements/pylock.types.toml"
 DISTS_LOCK = ".github/requirements/pylock.dists.toml"
 BUILD_LOCK = ".github/requirements/pylock.build.toml"
 
@@ -305,7 +304,7 @@ def types(session: nox.Session, checker: str) -> None:
     """Run one checker over its own scope: :data:`CHECKED`, or pyright's include."""
     # The umbrella entry installs every distribution, so every import resolves.
     editables, _, _ = WORKSPACES["umbrella"]
-    _install(session, TYPES_LOCK, editables)
+    _install(session, f".github/requirements/pylock.{checker}.toml", editables)
     session.run(*TYPE_CHECKERS[checker])
 
 

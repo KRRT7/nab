@@ -59,7 +59,7 @@ if len(set(declared.values())) > 1:
     )
 PY
 
-for group in tests types pre-commit crosshair release docs lint nox dists; do
+for group in tests types mypy pyright ty pyrefly zuban pre-commit crosshair release docs lint nox dists; do
     echo "==> Locking group: ${group}"
     group_args=()
     if [[ "${group}" == "docs" || "${group}" == "lint" ]]; then
@@ -103,7 +103,7 @@ build = pins("build")
 disagreed = [
     f"  {name}: {package} is {sorted(build[package])} in the build lock"
     f" and {sorted(other[package])} there"
-    for name in ("tests", "types", "crosshair", "dists", "release")
+    for name in ("tests", "types", "mypy", "pyright", "ty", "pyrefly", "zuban", "crosshair", "dists", "release")
     for other in [pins(name)]
     for package in sorted(build.keys() & other.keys())
     if build[package] != other[package]

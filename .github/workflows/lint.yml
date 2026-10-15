@@ -125,7 +125,7 @@ jobs:
           cache: pip
           cache-dependency-path: |
             .github/requirements/pylock.nox.toml
-            .github/requirements/pylock.types.toml
+            .github/requirements/pylock.${{ matrix.checker }}.toml
             .github/requirements/pylock.build.toml
 
       - name: Upgrade pip to PEP 751 install support
