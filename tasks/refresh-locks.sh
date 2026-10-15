@@ -9,7 +9,7 @@
 set -euo pipefail
 
 ROOT="$(git rev-parse --show-toplevel)"
-cd "$ROOT"
+cd "${ROOT}"
 
 # NAB_* is nab's own settings namespace and it rejects any variable in it that
 # is not a setting, so the override for which nab to run lives outside it.
@@ -81,7 +81,7 @@ echo "==> Locking [build-system].requires"
     --output ".github/requirements/pylock.build.toml" \
     "${EXTRA_ARGS[@]}"
 
-# The build lock is installed alongside the dists and release locks, so a
+# The build lock is installed alongside the development and release locks, so a
 # package they share has to resolve the same in both or the second install
 # silently moves the first.
 echo "==> Checking the locks that share an environment agree"
@@ -103,7 +103,7 @@ build = pins("build")
 disagreed = [
     f"  {name}: {package} is {sorted(build[package])} in the build lock"
     f" and {sorted(other[package])} there"
-    for name in ("dists", "release")
+    for name in ("tests", "types", "crosshair", "dists", "release")
     for other in [pins(name)]
     for package in sorted(build.keys() & other.keys())
     if build[package] != other[package]
