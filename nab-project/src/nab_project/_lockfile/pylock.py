@@ -46,7 +46,7 @@ from nab_provider.conflict_kind import KIND_GROUP, MARKER_VARIABLE_FOR_KIND
 from nab_provider.marker_holds import intractable_as_error
 
 from ..conflicts import conflict_exclusion_groups, conflict_member_groups
-from .builder import require_artifact_hashes
+from .builder import require_artifact_hashes, validate_artifact_hashes
 from .coverage import validate_marker_coverage
 from .disjointness import validate_marker_disjointness
 from .groups import BASE_MEMBER
@@ -511,6 +511,7 @@ def _pin_to_package(
             ),
         )
     if isinstance(pin, ArchivePin):
+        validate_artifact_hashes(pin.name, pin.hashes)
         # An archive is content-pinned by its hash, so the version is
         # stable and recorded (unlike the directory/VCS cases above).
         return Package(
@@ -558,6 +559,7 @@ def _wheel_to_package(wheel: WheelArtifact, *, lock_dir: Path) -> PackageWheel:
     ``url`` verbatim.
     """
     size = _validate_artifact_size(wheel.size)
+    validate_artifact_hashes(wheel.filename, wheel.hashes)
     if wheel.local_path is not None:
         return PackageWheel(
             name=wheel.filename,
@@ -581,6 +583,7 @@ def _sdist_to_package(sdist: SdistArtifact, *, lock_dir: Path) -> PackageSdist:
     See :func:`_wheel_to_package` for the ``local_path`` handling.
     """
     size = _validate_artifact_size(sdist.size)
+    validate_artifact_hashes(sdist.filename, sdist.hashes)
     if sdist.local_path is not None:
         return PackageSdist(
             name=sdist.filename,

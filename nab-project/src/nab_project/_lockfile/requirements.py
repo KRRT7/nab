@@ -15,7 +15,7 @@ from urllib.parse import quote
 
 from nab_index.atomic import atomic_write_text
 
-from .builder import require_artifact_hashes
+from .builder import require_artifact_hashes, validate_artifact_hashes
 
 if TYPE_CHECKING:
     import os
@@ -42,9 +42,7 @@ def write_requirements_with_hashes(
     (pip does not hash-check those forms); an editable local pin renders as
     ``-e <url>`` and a ``subdirectory`` as a ``#subdirectory=`` fragment.  An
     archive pin is a third form, ``name @ <url>#sha256=...``, carrying its hash
-    in the fragment; :func:`require_artifact_hashes` skips it because that hash
-    is guaranteed at config parse.  Returns the text and, when ``output_path``
-    is provided, atomically writes it.
+    in the fragment. Returns the text and atomically writes ``output_path`` if set.
     """
     require_artifact_hashes(lock_input)
     return _render_requirements(lock_input, with_hashes=True, output_path=output_path)
@@ -120,9 +118,8 @@ def _render_pins(pins: Mapping[str, PinShape], *, with_hashes: bool) -> list[str
         elif isinstance(pin, VcsPin):
             lines.append(f"{pin.name} @ {pin.repo_url}")
         elif isinstance(pin, ArchivePin):
-            # The hash is the archive's identity, so carry it (and any
-            # subdirectory) in the fragment for a reproducible, hash-checkable
-            # install line, mirroring how VcsPin pins its commit in the URL.
+            validate_artifact_hashes(pin.name, pin.hashes)
+            # Archive hashes stay in the URL in both output formats.
             fragment = "&".join(f"{algo}={digest}" for algo, digest in pin.hashes)
             if pin.subdirectory is not None:
                 fragment += f"&subdirectory={quote(pin.subdirectory, safe='/')}"
@@ -139,8 +136,10 @@ def _render_index_pin(pin: IndexPin, *, with_hashes: bool = True) -> list[str]:
         return [f"{pin.name}=={pin.version}"]
     digests: list[tuple[str, str]] = []
     if pin.sdist is not None:
+        validate_artifact_hashes(pin.sdist.filename, pin.sdist.hashes)
         digests.extend(pin.sdist.hashes)
     for wheel in pin.wheels:
+        validate_artifact_hashes(wheel.filename, wheel.hashes)
         digests.extend(wheel.hashes)
     if not digests:
         return [f"{pin.name}=={pin.version}"]
