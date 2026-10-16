@@ -1084,7 +1084,7 @@ class TestLockCommandSpecific:
             pytest.raises(SystemExit, match="1"),
         ):
             lock(pyproject, output=out, format="pylock")
-        assert "no acceptable hash" in capsys.readouterr().err
+        assert "has no hash" in capsys.readouterr().err
 
     def test_failed_target_reports_resolution_failure(
         self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
